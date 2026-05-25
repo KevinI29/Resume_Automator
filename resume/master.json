@@ -1,0 +1,124 @@
+{
+  "personal": {
+    "name": "Kevin Ingersal",
+    "email": "kevin.ingersal@gmail.com",
+    "phone": "+91-9884561353",
+    "location": "Bangalore, Karnataka, India",
+    "linkedin": "linkedin.com/kevin-ingersal",
+    "github": "github.com/KevinI29"
+  },
+  "summary": "Backend and full-stack software engineer with experience building interactive web applications, data analytics platforms, and ETL/data pipeline systems. Skilled in Python, JavaScript, React, Node.js, and data science tooling, with strong interests in scalable architectures, algorithm visualization, and applied machine learning.",
+  "experience": [
+    {
+      "company": "Tata Consultancy Services",
+      "title": "Assistant System Engineer",
+      "start": "Aug 2025",
+      "end": "Present",
+      "location": "Bangalore, Karnataka, India",
+      "bullets": [
+        "Building foundational knowledge in data pipeline architecture, ETL workflows, and cloud-native tooling (AWS/GCP) applicable to enterprise-scale systems",
+        "Independently initiated full-stack and data science side projects to apply learnings outside formal training, demonstrating a self-driven engineering mindset"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Sastra Deemed University",
+      "degree": "Bachelor of Bioinformatics",
+      "year": "2025",
+      "gpa": "7.5 CGPA"
+    },
+    {
+      "institution": "St Brittos Matriculation Hr Sec School",
+      "degree": "Higher Secondary Education",
+      "year": "2021",
+      "gpa": "89.9%"
+    }
+  ],
+  "skills": {
+    "languages": [
+      "Python",
+      "JavaScript",
+      "SQL",
+      "HTML",
+      "CSS"
+    ],
+    "frameworks": [
+      "React.js",
+      "Node.js",
+      "Vite",
+      "Pandas",
+      "Scikit-learn",
+      "Matplotlib",
+      "BeautifulSoup",
+      "Flask",
+      "SQLAlchemy",
+      "Plotly",
+      "NetworkX",
+      "Lifelines"
+    ],
+    "tools": [
+      "Git",
+      "GitHub",
+      "VS Code",
+      "Jupyter Notebook",
+      "MySQL",
+      "SQLite"
+    ],
+    "other": [
+      "REST APIs",
+      "Object-Oriented Programming",
+      "Data Structures and Algorithms",
+      "ETL Pipelines",
+      "Anomaly Detection",
+      "Statistical Analysis",
+      "Machine Learning",
+      "Data Visualization"
+    ]
+  },
+  "projects": [
+    {
+      "name": "AlgoViz - Algorithm Visualizer",
+      "description": "Interactive web platform for visualizing sorting and pathfinding algorithms step-by-step with playback controls including play, pause, and step-through functionality. Built a state-driven animation engine using React hooks and modular architecture for integrating additional algorithms.",
+      "tech": [
+        "React",
+        "Vite",
+        "Node.js",
+        "JavaScript"
+      ],
+      "url": "github.com/algo-viz"
+    },
+    {
+      "name": "Clinical Data Analysis Platform",
+      "description": "Full-stack clinical analytics platform enabling researchers to upload, analyze, and visualize medical datasets through a browser interface. Implemented statistical modules including Kaplan-Meier survival analysis, logistic regression, PCA, clustering, anomaly detection, and GPT-powered clinical insights generation.",
+      "tech": [
+        "Python",
+        "Flask",
+        "SQLAlchemy",
+        "Scikit-learn",
+        "Pandas",
+        "Matplotlib",
+        "Plotly",
+        "NetworkX",
+        "OpenAI API"
+      ],
+      "url": ""
+    },
+    {
+      "name": "Automated Web Scraper & Data Pipeline",
+      "description": "Python-based web scraping and ETL pipeline using BeautifulSoup and Requests to extract, clean, normalize, and structure data from dynamic web sources into analysis-ready datasets.",
+      "tech": [
+        "Python",
+        "BeautifulSoup",
+        "Requests",
+        "Pandas"
+      ],
+      "url": "github.com/Projects-for-British-airways"
+    }
+  ],
+  "achievements": [
+    "Solved 100+ DSA problems",
+    "Solved 50+ LeetCode problems",
+    "Completed British Airways Forage Job Simulation"
+  ]
+}

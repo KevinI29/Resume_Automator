@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root {
+    --accent: #1a56a0;
+    --text: #1a1a1a;
+    --muted: #555;
+    --border: #ccc;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10.5pt;
+    color: var(--text);
+    line-height: 1.45;
+  }
+
+  /* ── Header ─────────────────────────────── */
+  .header { margin-bottom: 10px; }
+  .name { font-size: 20pt; font-weight: bold; color: var(--accent); }
+  .contact {
+    font-size: 9pt;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .contact span { margin-right: 12px; }
+
+  /* ── Section headings ────────────────────── */
+  h2 {
+    font-size: 10.5pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    border-bottom: 1.5px solid var(--accent);
+    padding-bottom: 2px;
+    margin-top: 11px;
+    margin-bottom: 5px;
+  }
+
+  /* ── Summary ─────────────────────────────── */
+  .summary { font-size: 10pt; }
+
+  /* ── Experience ──────────────────────────── */
+  .job { margin-bottom: 8px; }
+  .job-header { overflow: hidden; }
+  .job-title { font-weight: bold; float: left; }
+  .job-dates { float: right; font-size: 9.5pt; color: var(--muted); }
+  .job-company { font-size: 9.5pt; color: var(--muted); clear: both; }
+  .job ul { margin-top: 3px; margin-left: 16px; }
+  .job ul li { margin-bottom: 2px; font-size: 10pt; }
+
+  /* ── Skills ──────────────────────────────── */
+  .skills-table { width: 100%; }
+  .skills-table td { vertical-align: top; padding: 1px 0; font-size: 10pt; }
+  .skills-label { font-weight: bold; width: 110px; color: var(--muted); }
+
+  /* ── Education ───────────────────────────── */
+  .edu { margin-bottom: 5px; overflow: hidden; }
+  .edu-degree { font-weight: bold; float: left; }
+  .edu-year { float: right; font-size: 9.5pt; color: var(--muted); }
+  .edu-inst { font-size: 9.5pt; color: var(--muted); clear: both; }
+  .edu-gpa { font-size: 9.5pt; color: var(--muted); }
+
+  /* ── Projects ────────────────────────────── */
+  .project { margin-bottom: 6px; }
+  .project-name { font-weight: bold; }
+  .project-tech { font-size: 9pt; color: var(--muted); margin-top: 1px; }
+  .project-desc { font-size: 10pt; margin-top: 1px; }
+
+  /* ── Achievements ────────────────────────── */
+  .achievements ul { margin-left: 16px; }
+  .achievements ul li { font-size: 10pt; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="name">{{ resume.personal.name }}</div>
+  <div class="contact">
+    <span>{{ resume.personal.email }}</span>
+    <span>{{ resume.personal.phone }}</span>
+    <span>{{ resume.personal.location }}</span>
+    {% if resume.personal.linkedin %}<span>{{ resume.personal.linkedin }}</span>{% endif %}
+    {% if resume.personal.github %}<span>{{ resume.personal.github }}</span>{% endif %}
+  </div>
+</div>
+
+<!-- Summary -->
+{% if resume.summary %}
+<h2>Summary</h2>
+<div class="summary">{{ resume.summary }}</div>
+{% endif %}
+
+<!-- Experience -->
+{% if resume.experience %}
+<h2>Experience</h2>
+{% for job in resume.experience %}
+<div class="job">
+  <div class="job-header">
+    <span class="job-title">{{ job.title }}</span>
+    <span class="job-dates">{{ job.start }} – {{ job.end }}</span>
+  </div>
+  <div class="job-company">{{ job.company }}{% if job.location %} &nbsp;|&nbsp; {{ job.location }}{% endif %}</div>
+  {% if job.bullets %}
+  <ul>
+    {% for bullet in job.bullets %}<li>{{ bullet }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Skills -->
+{% if resume.skills %}
+<h2>Skills</h2>
+<table class="skills-table">
+  {% if resume.skills.languages %}
+  <tr>
+    <td class="skills-label">Languages</td>
+    <td>{{ resume.skills.languages | join(', ') }}</td>
+  </tr>
+  {% endif %}
+  {% if resume.skills.frameworks %}
+  <tr>
+    <td class="skills-label">Frameworks</td>
+    <td>{{ resume.skills.frameworks | join(', ') }}</td>
+  </tr>
+  {% endif %}
+  {% if resume.skills.tools %}
+  <tr>
+    <td class="skills-label">Tools</td>
+    <td>{{ resume.skills.tools | join(', ') }}</td>
+  </tr>
+  {% endif %}
+  {% if resume.skills.other %}
+  <tr>
+    <td class="skills-label">Other</td>
+    <td>{{ resume.skills.other | join(', ') }}</td>
+  </tr>
+  {% endif %}
+</table>
+{% endif %}
+
+<!-- Education -->
+{% if resume.education %}
+<h2>Education</h2>
+{% for edu in resume.education %}
+<div class="edu">
+  <span class="edu-degree">{{ edu.degree }}</span>
+  <span class="edu-year">{{ edu.year }}</span>
+  <div class="edu-inst">{{ edu.institution }}</div>
+  {% if edu.gpa %}<div class="edu-gpa">GPA / Score: {{ edu.gpa }}</div>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Projects -->
+{% if resume.projects %}
+<h2>Projects</h2>
+{% for project in resume.projects %}
+<div class="project">
+  <span class="project-name">{{ project.name }}</span>
+  {% if project.url %} &mdash; <span style="font-size:9pt;color:#1a56a0;">{{ project.url }}</span>{% endif %}
+  <div class="project-desc">{{ project.description }}</div>
+  <div class="project-tech">Tech: {{ project.tech | join(', ') }}</div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Achievements -->
+{% if resume.achievements %}
+<h2>Achievements</h2>
+<div class="achievements">
+  <ul>
+    {% for item in resume.achievements %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+.env
+output/
+logs/
+*.db
+job_auto.db
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+.pytest_cache/
+.claude/
