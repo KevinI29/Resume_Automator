@@ -5,6 +5,7 @@ Usage:
   python run.py score        # score unscored jobs only
   python run.py tailor       # tailor + render resumes for approved jobs
   python run.py pipeline     # scrape → score (normal daily run)
+  python run.py dashboard    # start local review dashboard on :8000
 """
 import asyncio
 import json
@@ -84,6 +85,11 @@ if __name__ == "__main__":
         asyncio.run(_tailor())
     elif command == "pipeline":
         asyncio.run(run_pipeline())
+    elif command == "dashboard":
+        import uvicorn
+        import db as _db
+        _db.init_db()
+        uvicorn.run("dashboard.app:app", host="127.0.0.1", port=8000, reload=True)
     else:
         console.print(f"[red]Unknown command: {command}[/red]")
         console.print("Usage: python run.py [scrape|score|tailor|pipeline]")

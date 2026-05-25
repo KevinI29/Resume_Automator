@@ -133,7 +133,7 @@ def get_jobs_above_threshold(min_score: int = config.MIN_FIT_SCORE) -> list[Job]
     return [Job(**dict(row)) for row in rows]
 
 
-def update_job_resume_path(job_id: int, resume_path: str) -> None:
+def update_job_resume_path(job_id: int, resume_path: str | None) -> None:
     with _conn() as conn:
         conn.execute(
             "UPDATE jobs SET resume_path = ? WHERE id = ?", (resume_path, job_id)
@@ -146,6 +146,44 @@ def get_approved_jobs_without_resume() -> list[Job]:
             "SELECT * FROM jobs WHERE status = 'approved' AND resume_path IS NULL"
         ).fetchall()
     return [Job(**dict(row)) for row in rows]
+
+
+def get_job_by_id(job_id: int) -> Job | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+    return Job(**dict(row)) if row else None
+
+
+def get_stats() -> dict:
+    with _conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        new = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'new'").fetchone()[0]
+        approved = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'approved'").fetchone()[0]
+        applied = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'applied'").fetchone()[0]
+        skipped = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'skipped'").fetchone()[0]
+        above = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE fit_score >= ?", (config.MIN_FIT_SCORE,)
+        ).fetchone()[0]
+    return {
+        "total": total,
+        "new": new,
+        "approved": approved,
+        "applied": applied,
+        "skipped": skipped,
+        "above_threshold": above,
+    }
+
+
+def reset_stuck_tailoring_jobs() -> None:
+    """Reset approved jobs whose resume_path is NULL — stuck from a previous failed tailoring run."""
+    with _conn() as conn:
+        conn.execute("""
+            UPDATE jobs
+            SET status = 'approved', resume_path = NULL
+            WHERE status = 'approved' AND resume_path IS NULL
+        """)
 
 
 def get_daily_application_count() -> int:

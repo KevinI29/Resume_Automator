@@ -47,10 +47,10 @@
 
   /* ── Experience ──────────────────────────── */
   .job { margin-bottom: 8px; }
-  .job-header { overflow: hidden; }
-  .job-title { font-weight: bold; float: left; }
-  .job-dates { float: right; font-size: 9.5pt; color: var(--muted); }
-  .job-company { font-size: 9.5pt; color: var(--muted); clear: both; }
+  .job-header { width: 100%; border-collapse: collapse; }
+  .job-title { font-weight: bold; }
+  .job-dates { text-align: right; font-size: 9.5pt; color: var(--muted); white-space: nowrap; }
+  .job-company { font-size: 9.5pt; color: var(--muted); }
   .job ul { margin-top: 3px; margin-left: 16px; }
   .job ul li { margin-bottom: 2px; font-size: 10pt; }
 
@@ -60,10 +60,11 @@
   .skills-label { font-weight: bold; width: 110px; color: var(--muted); }
 
   /* ── Education ───────────────────────────── */
-  .edu { margin-bottom: 5px; overflow: hidden; }
-  .edu-degree { font-weight: bold; float: left; }
-  .edu-year { float: right; font-size: 9.5pt; color: var(--muted); }
-  .edu-inst { font-size: 9.5pt; color: var(--muted); clear: both; }
+  .edu { margin-bottom: 5px; }
+  .edu-header { width: 100%; border-collapse: collapse; }
+  .edu-degree { font-weight: bold; }
+  .edu-year { text-align: right; font-size: 9.5pt; color: var(--muted); white-space: nowrap; }
+  .edu-inst { font-size: 9.5pt; color: var(--muted); }
   .edu-gpa { font-size: 9.5pt; color: var(--muted); }
 
   /* ── Projects ────────────────────────────── */
@@ -102,10 +103,10 @@
 <h2>Experience</h2>
 {% for job in resume.experience %}
 <div class="job">
-  <div class="job-header">
-    <span class="job-title">{{ job.title }}</span>
-    <span class="job-dates">{{ job.start }} – {{ job.end }}</span>
-  </div>
+  <table class="job-header"><tr>
+    <td class="job-title">{{ job.title }}</td>
+    <td class="job-dates">{{ job.start }} – {{ job.end }}</td>
+  </tr></table>
   <div class="job-company">{{ job.company }}{% if job.location %} &nbsp;|&nbsp; {{ job.location }}{% endif %}</div>
   {% if job.bullets %}
   <ul>
@@ -147,19 +148,6 @@
 </table>
 {% endif %}
 
-<!-- Education -->
-{% if resume.education %}
-<h2>Education</h2>
-{% for edu in resume.education %}
-<div class="edu">
-  <span class="edu-degree">{{ edu.degree }}</span>
-  <span class="edu-year">{{ edu.year }}</span>
-  <div class="edu-inst">{{ edu.institution }}</div>
-  {% if edu.gpa %}<div class="edu-gpa">GPA / Score: {{ edu.gpa }}</div>{% endif %}
-</div>
-{% endfor %}
-{% endif %}
-
 <!-- Projects -->
 {% if resume.projects %}
 <h2>Projects</h2>
@@ -169,6 +157,21 @@
   {% if project.url %} &mdash; <span style="font-size:9pt;color:#1a56a0;">{{ project.url }}</span>{% endif %}
   <div class="project-desc">{{ project.description }}</div>
   <div class="project-tech">Tech: {{ project.tech | join(', ') }}</div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Education -->
+{% if resume.education %}
+<h2>Education</h2>
+{% for edu in resume.education | sort(attribute='year', reverse=True) %}
+<div class="edu">
+  <table class="edu-header"><tr>
+    <td class="edu-degree">{{ edu.degree }}</td>
+    <td class="edu-year">{{ edu.year }}</td>
+  </tr></table>
+  <div class="edu-inst">{{ edu.institution }}</div>
+  {% if edu.gpa %}<div class="edu-gpa">GPA / Score: {{ edu.gpa }}</div>{% endif %}
 </div>
 {% endfor %}
 {% endif %}
