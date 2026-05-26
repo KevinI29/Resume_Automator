@@ -39,13 +39,9 @@ async def dashboard(request: Request):
 
 @app.get("/api/jobs")
 async def get_jobs(status: Optional[str] = None):
-    if status == "new":
-        # "New" means actionable — all jobs above threshold regardless of status
-        jobs = db.get_jobs_above_threshold()
-    elif status:
+    if status:
         jobs = db.get_jobs_by_status(status)
     else:
-        # "All" means truly all — no score filter
         jobs = db.get_all_jobs()
     jobs.sort(key=lambda j: j.fit_score or 0, reverse=True)
     return [j.model_dump() for j in jobs]
@@ -105,6 +101,28 @@ async def download_resume(job_id: int):
     return FileResponse(job.resume_path, media_type="application/pdf", filename=filename)
 
 
+# ── Apply API ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/jobs/{job_id}/apply")
+async def apply_job(job_id: int, background_tasks: BackgroundTasks):
+    job = db.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "approved" or not job.resume_path or job.resume_path == "failed":
+        raise HTTPException(status_code=400, detail="Job not ready — must be approved with a resume")
+    background_tasks.add_task(_apply_background, job_id)
+    return {"status": "applying"}
+
+
+@app.post("/api/apply-all")
+async def apply_all(background_tasks: BackgroundTasks):
+    jobs = db.get_approved_jobs_with_resume()
+    if not jobs:
+        return {"status": "no_jobs", "count": 0}
+    background_tasks.add_task(_apply_batch_background, [j.id for j in jobs])
+    return {"status": "started", "count": len(jobs)}
+
+
 # ── Pipeline API ──────────────────────────────────────────────────────────────
 
 @app.post("/api/pipeline/run")
@@ -144,6 +162,40 @@ async def _tailor_background(job_id: int) -> None:
         log.error(f"Tailoring failed for job {job_id}: {exc}", exc_info=True)
         db.update_job_status(job_id, "approved")
         db.update_job_resume_path(job_id, "failed")
+
+
+async def _apply_background(job_id: int) -> None:
+    import logging
+    log = logging.getLogger("dashboard.apply")
+    try:
+        from applicant import LinkedInApplicant
+        job = db.get_job_by_id(job_id)
+        if not job:
+            return
+        applicant = LinkedInApplicant()
+        await applicant.setup_browser()
+        await applicant.apply_to_job(job)
+        await applicant.close()
+    except Exception as exc:
+        import logging as _l
+        _l.getLogger("dashboard.apply").error(f"Apply background task failed for job {job_id}: {exc}")
+
+
+async def _apply_batch_background(job_ids: list[int]) -> None:
+    import logging
+    log = logging.getLogger("dashboard.apply")
+    try:
+        from applicant import LinkedInApplicant
+        jobs = [j for j_id in job_ids if (j := db.get_job_by_id(j_id))]
+        if not jobs:
+            return
+        applicant = LinkedInApplicant()
+        await applicant.setup_browser()
+        results = await applicant.apply_batch(jobs)
+        await applicant.close()
+        log.info(f"Apply-all complete: {results}")
+    except Exception as exc:
+        log.error(f"Apply-all background task failed: {exc}")
 
 
 async def _pipeline_background() -> None:

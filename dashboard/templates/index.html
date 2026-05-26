@@ -338,6 +338,10 @@ body {
 .btn-failed          { background: #450a0a; color: #fca5a5; cursor: default; }
 .btn-retry           { background: #431407; color: #fed7aa; }
 .btn-retry:hover:not(:disabled) { background: #7c2d12; }
+.btn-apply           { background: #1e3a5f; color: #7dd3fc; }
+.btn-apply:hover:not(:disabled) { background: #1d4ed8; }
+.btn-applying        { background: #1e1b4b; color: #a5b4fc; cursor: default; }
+.btn-applied         { background: #14532d; color: #86efac; cursor: default; }
 
 /* ── Modal ───────────────────────────────────────────────────────── */
 .overlay {
@@ -507,6 +511,11 @@ body {
       ▶ Run Pipeline
     </button>
     <div class="pipeline-info" id="pipeline-info"></div>
+    <button class="pipeline-btn" id="apply-all-btn" onclick="applyAll()"
+            style="margin-top:8px;background:#1e3a5f;">
+      ⚡ Apply All
+    </button>
+    <div class="pipeline-info" id="apply-all-info"></div>
   </div>
 </aside>
 
@@ -561,7 +570,7 @@ async function loadStats() {
     document.getElementById('s-above').textContent    = s.above_threshold;
     document.getElementById('s-approved').textContent = s.approved;
     document.getElementById('s-applied').textContent  = s.applied;
-    document.getElementById('fc-all').textContent      = s.above_threshold;
+    document.getElementById('fc-all').textContent      = s.total;
     document.getElementById('fc-new').textContent      = s.new;
     document.getElementById('fc-approved').textContent = s.approved;
     document.getElementById('fc-applied').textContent  = s.applied;
@@ -638,7 +647,14 @@ function renderActions(j) {
     resume = `<span class="btn btn-tailoring"><span class="spin"></span> Tailoring…</span>`;
   }
 
-  return approve + skip + view + resume;
+  let applyBtn = '';
+  if (j.status === 'applied') {
+    applyBtn = `<span class="btn btn-applied">✓ Applied</span>`;
+  } else if (j.status === 'approved' && j.resume_path && j.resume_path !== 'failed') {
+    applyBtn = `<button class="btn btn-apply" onclick="applyJob(event,${j.id})">Apply</button>`;
+  }
+
+  return approve + skip + view + resume + applyBtn;
 }
 
 function refreshCard(j) {
@@ -723,6 +739,79 @@ async function retryTailor(e, id) {
     toast(`Retry failed: ${err.message}`, 'err');
     btn.disabled = false;
     btn.innerHTML = 'Retry';
+  }
+}
+
+/* ── Apply ───────────────────────────────────────────────────────── */
+async function applyJob(e, id) {
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>';
+  try {
+    await api(`/api/jobs/${id}/apply`, 'POST');
+    // Optimistically show applying state and poll until status changes
+    const j = jobs.find(x => x.id === id);
+    if (j) {
+      const actEl = document.getElementById(`act-${id}`);
+      if (actEl) {
+        actEl.innerHTML = actEl.innerHTML.replace(
+          /<button[^>]*btn-apply[^>]*>.*?<\/button>/,
+          '<span class="btn btn-applying"><span class="spin"></span> Applying…</span>'
+        );
+      }
+    }
+    toast('Applying in background — browser will open', 'ok');
+    pollApplyStatus(id);
+  } catch(err) {
+    toast(`Apply failed: ${err.message}`, 'err');
+    btn.disabled = false;
+    btn.innerHTML = 'Apply';
+  }
+}
+
+async function pollApplyStatus(id, tries = 0) {
+  if (tries > 60) return; // ~5 min timeout
+  await sleep(5000);
+  try {
+    const j = await api(`/api/jobs/${id}`);
+    if (j.status === 'applied' || j.status === 'failed' || j.status === 'closed') {
+      refreshCard(j);
+      loadStats();
+      if (j.status === 'applied') toast(`✓ Applied: ${j.title}`, 'ok');
+      else toast(`Apply ${j.status}: ${j.title}`, 'err');
+      return;
+    }
+  } catch {}
+  pollApplyStatus(id, tries + 1);
+}
+
+async function applyAll() {
+  const btn = document.getElementById('apply-all-btn');
+  const info = document.getElementById('apply-all-info');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Applying…';
+  try {
+    const r = await api('/api/apply-all', 'POST');
+    if (r.status === 'no_jobs') {
+      toast('No approved jobs with resumes ready', 'err');
+      btn.disabled = false;
+      btn.innerHTML = '⚡ Apply All';
+      return;
+    }
+    info.textContent = `${r.count} job(s) queued`;
+    toast(`Applying to ${r.count} job(s) — browser will open`, 'ok');
+    // Re-enable after a delay (batch runs in background)
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = '⚡ Apply All';
+      loadJobs(currentFilter);
+      loadStats();
+    }, 10000);
+  } catch(err) {
+    toast(`Apply All failed: ${err.message}`, 'err');
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Apply All';
   }
 }
 

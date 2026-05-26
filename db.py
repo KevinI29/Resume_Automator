@@ -186,11 +186,29 @@ def reset_stuck_tailoring_jobs() -> None:
         """)
 
 
+def get_approved_jobs_with_resume() -> list[Job]:
+    """Jobs ready to apply — approved with a real PDF resume (not null, not 'failed')."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM jobs WHERE status = 'approved' "
+            "AND resume_path IS NOT NULL AND resume_path != 'failed'"
+        ).fetchall()
+    return [Job(**dict(row)) for row in rows]
+
+
+def update_job_applied(job_id: int) -> None:
+    """Mark a job as applied and record the timestamp."""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET status = 'applied', applied_at = ? WHERE id = ?",
+            (datetime.utcnow(), job_id),
+        )
+
+
 def get_daily_application_count() -> int:
-    today = date.today().isoformat()
+    """Count of jobs applied today — used to enforce the daily cap."""
     with _conn() as conn:
         row = conn.execute(
-            "SELECT COUNT(*) FROM applications WHERE date(submitted_at) = ? AND status = 'submitted'",
-            (today,),
+            "SELECT COUNT(*) FROM jobs WHERE status = 'applied' AND date(applied_at) = date('now')"
         ).fetchone()
     return row[0]
