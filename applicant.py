@@ -87,6 +87,59 @@ class LinkedInApplicant:
         await page.evaluate("window.scrollTo(0, 0)")
         await asyncio.sleep(1.0)
 
+    async def _find_input_by_label(self, page: Page, *label_keywords) -> any:
+        """Find an input field by searching for label text above it."""
+        labels = await page.query_selector_all(
+            '.jobs-easy-apply-modal label, '
+            '[role="dialog"] label, '
+            '.jobs-easy-apply-modal .fb-form-element, '
+            '[role="dialog"] .fb-form-element'
+        )
+        for label in labels:
+            label_text = (await label.inner_text()).lower()
+            if any(kw.lower() in label_text for kw in label_keywords):
+                for_attr = await label.get_attribute('for')
+                if for_attr:
+                    inp = await page.query_selector(f'#{for_attr}')
+                    if inp:
+                        return inp
+                parent = await label.evaluate_handle(
+                    'el => el.closest(".fb-form-element, .jobs-easy-apply-form-element")'
+                )
+                if parent:
+                    inp = await parent.query_selector('input, select, textarea')
+                    if inp:
+                        return inp
+        return None
+
+    async def _select_option_by_label(self, page: Page, label_keywords: list,
+                                       preferred_values: list) -> bool:
+        """Find a select dropdown by label and pick the best matching option."""
+        select = await self._find_input_by_label(page, *label_keywords)
+        if not select:
+            return False
+        tag = await select.evaluate('el => el.tagName.toLowerCase()')
+        if tag != 'select':
+            return False
+        options = await select.query_selector_all('option')
+        option_texts = []
+        for opt in options:
+            txt = (await opt.inner_text()).strip().lower()
+            val = await opt.get_attribute('value') or ''
+            option_texts.append((txt, val, opt))
+        for preferred in preferred_values:
+            for txt, val, opt in option_texts:
+                if preferred.lower() in txt or preferred.lower() == val.lower():
+                    await select.select_option(value=val if val else txt)
+                    self.logger.info(f"Selected dropdown option: {txt}")
+                    return True
+        for txt, val, opt in option_texts:
+            if txt and txt != 'select an option' and val:
+                await select.select_option(value=val)
+                self.logger.info(f"Selected first available option: {txt}")
+                return True
+        return False
+
     # ── Safety checks ──────────────────────────────────────────────────────────
 
     async def _check_captcha(self, page: Page) -> bool:
@@ -106,15 +159,15 @@ class LinkedInApplicant:
     async def navigate_to_job(self, page: Page, url: str) -> bool:
         """Navigate to the job URL and simulate reading it. Returns False if job is closed."""
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await self._human_delay(2.0, 4.0)
+            await page.goto(url, wait_until="load", timeout=30000)
+            await self._human_delay(4.0, 6.0)  # give LinkedIn JS time to render
 
             # Check if we need to log in
             if await page.query_selector('input[name="session_key"]'):
                 self.logger.warning("Not logged in — please log in in the browser window")
                 input("Press Enter after logging in...")
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await self._human_delay(2.0, 4.0)
+                await page.goto(url, wait_until="load", timeout=30000)
+                await self._human_delay(4.0, 6.0)  # give LinkedIn JS time to render
 
             if await self._check_captcha(page):
                 await self._take_screenshot(page, "captcha")
@@ -142,28 +195,60 @@ class LinkedInApplicant:
 
     async def click_easy_apply(self, page: Page) -> bool:
         """Find and click the Easy Apply button, wait for modal to open."""
+        await self._human_delay(2.0, 3.0)
+
+        # Wait for page to be interactive
         await self._human_delay(2.0, 4.0)
-        selectors = [
+
+        # Try text-based selectors first — most resilient to LinkedIn UI changes
+        text_selectors = [
+            'button:has-text("Easy Apply")',
+            '[aria-label*="Easy Apply"]',
+            '[aria-label*="easy apply"]',
+        ]
+
+        # Then fall back to class-based selectors
+        class_selectors = [
             'button.jobs-apply-button',
-            'button[aria-label*="Easy Apply"]',
-            'button[aria-label*="easy apply"]',
             '.jobs-s-apply button',
             '[data-control-name="jobdetails_topcard_inapply"]',
         ]
-        for sel in selectors:
-            btn = await page.query_selector(sel)
-            if btn:
-                await self._human_click(btn)
-                try:
-                    await page.wait_for_selector(
-                        '.jobs-easy-apply-modal, [data-test-modal], [role="dialog"]',
-                        timeout=8000,
-                    )
-                    self.logger.info("Easy Apply modal opened")
-                    return True
-                except Exception:
-                    pass  # try next selector
-        self.logger.warning("Easy Apply button not found")
+
+        all_selectors = text_selectors + class_selectors
+
+        for sel in all_selectors:
+            try:
+                btn = await page.query_selector(sel)
+                if btn:
+                    self.logger.info(f"Found Easy Apply button with selector: {sel}")
+                    await btn.scroll_into_view_if_needed()
+                    await self._human_delay(0.5, 1.5)
+                    await self._human_click(btn)
+                    try:
+                        await page.wait_for_selector(
+                            '.jobs-easy-apply-modal, [data-test-modal], '
+                            '[role="dialog"], .artdeco-modal',
+                            timeout=8000,
+                        )
+                        self.logger.info("Easy Apply modal opened")
+                        return True
+                    except Exception:
+                        self.logger.debug(f"Modal did not appear after clicking {sel}")
+                        continue
+            except Exception as e:
+                self.logger.debug(f"Selector {sel} error: {e}")
+                continue
+
+        # Last resort — dump all buttons on page to logs for debugging
+        buttons = await page.query_selector_all('button')
+        button_texts = []
+        for b in buttons[:20]:
+            txt = await b.inner_text()
+            aria = await b.get_attribute('aria-label') or ''
+            button_texts.append(f"text='{txt.strip()}' aria='{aria}'")
+        self.logger.warning(f"Easy Apply button not found. Page buttons: {button_texts}")
+
+        await self._take_screenshot(page, "no_easyapply")
         return False
 
     async def upload_resume(self, page: Page, pdf_path: str) -> bool:
@@ -172,20 +257,152 @@ class LinkedInApplicant:
             await self._human_delay(1.0, 2.0)
             file_input = await page.query_selector('input[type="file"]')
             if not file_input:
+                await page.evaluate("""
+                    document.querySelectorAll('input[type="file"]').forEach(el => {
+                        el.style.display = 'block';
+                        el.style.opacity = '1';
+                    });
+                """)
+                file_input = await page.query_selector('input[type="file"]')
+
+            if file_input:
+                await file_input.set_input_files(pdf_path)
+                self.logger.info(f"Resume uploaded: {pdf_path}")
+                await self._human_delay(2.0, 3.0)
+                return True
+            else:
                 self.logger.warning("No file input found — skipping resume upload")
-                return False
-            await file_input.set_input_files(pdf_path)
-            await asyncio.sleep(random.uniform(2.0, 3.5))
-            self.logger.info(f"Resume uploaded: {pdf_path}")
-            return True
+                return True  # Don't fail — LinkedIn may use previously uploaded resume
         except Exception as exc:
             self.logger.error(f"Resume upload failed: {exc}")
             return False
 
     async def fill_form_fields(self, page: Page) -> bool:
         """Fill common form fields conservatively. Skips anything unfamiliar."""
+        await self._human_delay(1.0, 2.0)
+
+        # --- Phone number ---
+        phone_field = await page.query_selector(
+            'input[id*="phoneNumber"], '
+            'input[name*="phoneNumber"], '
+            'input[aria-label*="Mobile phone"], '
+            'input[aria-label*="Phone number"], '
+            'input[aria-label*="phone"]'
+        )
+        if phone_field:
+            await phone_field.scroll_into_view_if_needed()
+            await self._human_click(phone_field)
+            await phone_field.click(click_count=3)
+            await phone_field.press("Backspace")
+            await self._human_type(phone_field, "9884561353")
+            await self._human_delay(0.5, 1.0)
+
+        # --- Location (city) ---
+        location_field = await page.query_selector(
+            'input[aria-label*="ity"], '
+            'input[aria-label*="ocation"], '
+            'input[id*="location"], '
+            'input[id*="city"]'
+        )
+        if location_field:
+            val = await location_field.input_value()
+            if not val.strip():
+                await location_field.scroll_into_view_if_needed()
+                await location_field.click(click_count=3)
+                await location_field.press("Backspace")
+                await self._human_type(location_field, "Bengaluru")
+                await self._human_delay(2.0, 3.0)
+                try:
+                    await page.wait_for_selector(
+                        '[role="option"], '
+                        '.basic-typeahead__selectable, '
+                        'li[data-value], '
+                        '.search-typeahead-v2__hit',
+                        timeout=5000
+                    )
+                    first_option = await page.query_selector(
+                        '[role="option"], '
+                        '.basic-typeahead__selectable, '
+                        'li[data-value], '
+                        '.search-typeahead-v2__hit'
+                    )
+                    if first_option:
+                        await self._human_click(first_option)
+                        self.logger.info("Selected location from dropdown")
+                        await self._human_delay(0.5, 1.0)
+                    else:
+                        await location_field.press("Enter")
+                except Exception:
+                    await location_field.press("Enter")
+                    self.logger.warning("Location dropdown did not appear — used typed value")
+
+        # --- Current CTC ---
+        current_ctc = await self._find_input_by_label(
+            page, "current ctc", "current salary", "current compensation"
+        )
+        if current_ctc:
+            val = await current_ctc.input_value()
+            if not val.strip():
+                await current_ctc.scroll_into_view_if_needed()
+                await current_ctc.click(click_count=3)
+                await self._human_type(current_ctc, str(config.CURRENT_CTC))
+                self.logger.info("Filled current CTC")
+
+        # --- Expected CTC ---
+        expected_ctc = await self._find_input_by_label(
+            page, "expected ctc", "expected salary", "expected compensation",
+            "desired salary"
+        )
+        if expected_ctc:
+            val = await expected_ctc.input_value()
+            if not val.strip():
+                await expected_ctc.scroll_into_view_if_needed()
+                await expected_ctc.click(click_count=3)
+                await self._human_type(expected_ctc, str(config.EXPECTED_CTC))
+                self.logger.info("Filled expected CTC")
+
+        # --- Notice period ---
+        notice = await self._find_input_by_label(
+            page, "notice period", "notice", "joining"
+        )
+        if notice:
+            val = await notice.input_value()
+            if not val.strip():
+                await notice.scroll_into_view_if_needed()
+                await notice.click(click_count=3)
+                await self._human_type(notice, str(config.NOTICE_PERIOD_DAYS))
+                self.logger.info("Filled notice period")
+
+        # --- Years of experience dropdown ---
+        await self._select_option_by_label(
+            page,
+            ["years of professional experience", "years of experience", "total years"],
+            ["0", "less than 1", "0-1", "fresher", "1"]
+        )
+
+        # --- Months of experience dropdown ---
+        await self._select_option_by_label(
+            page,
+            ["months of experience", "additional months", "total months"],
+            ["0", "less than 6", "0-6", "none"]
+        )
+
+        # --- Work authorization dropdown ---
+        await self._select_option_by_label(
+            page,
+            ["authorized", "eligible to work", "work authorization", "legally authorized"],
+            ["yes", "true", "1", "authorized"]
+        )
+
+        # --- Gender dropdown ---
+        await self._select_option_by_label(
+            page,
+            ["gender"],
+            ["male", "prefer not", "not to say"]
+        )
+
+        # --- Work authorization radios ---
         try:
-            # Work authorization — look for "yes" radio options
             radios = await page.query_selector_all('input[type="radio"]')
             for radio in radios:
                 label = await radio.evaluate(
@@ -199,8 +416,11 @@ class LinkedInApplicant:
                     if not is_checked:
                         await self._human_click(radio)
                     break
+        except Exception as exc:
+            self.logger.warning(f"Radio fill warning (non-fatal): {exc}")
 
-            # Years of experience — numeric inputs labeled "experience"
+        # --- Years of experience ---
+        try:
             exp_inputs = await page.query_selector_all(
                 'input[id*="experience"], input[name*="experience"]'
             )
@@ -210,66 +430,129 @@ class LinkedInApplicant:
                     await inp.fill(str(config.EXPERIENCE_YEARS))
                     await asyncio.sleep(0.3)
 
-            # Selects near "experience" labels
             exp_selects = await page.query_selector_all(
                 'select[id*="experience"], select[name*="experience"]'
             )
             for sel in exp_selects:
                 await sel.select_option(index=1)
-
-            return True
         except Exception as exc:
-            self.logger.warning(f"Form fill warning (non-fatal): {exc}")
-            return True  # non-fatal — keep going
+            self.logger.warning(f"Experience fill warning (non-fatal): {exc}")
+
+        # --- Log any remaining empty required fields for debugging ---
+        required_inputs = await page.query_selector_all(
+            'input[required]:not([type="hidden"]), '
+            'input[aria-required="true"]:not([type="hidden"])'
+        )
+        for inp in required_inputs:
+            val = await inp.input_value()
+            if not val.strip():
+                label = await inp.get_attribute('aria-label') or ''
+                placeholder = await inp.get_attribute('placeholder') or ''
+                self.logger.warning(
+                    f"Unfilled required field: label='{label}' placeholder='{placeholder}'"
+                )
+
+        return True
 
     async def handle_form_steps(self, page: Page) -> bool:
         """
         State machine for the multi-step Easy Apply form.
-        Loops through Next → Review → Submit, max 5 steps.
+        Loops through Next → Review → Submit, max 8 steps.
+        Only increments step counter when form content actually changes.
         Returns True if application was submitted.
         """
-        for step in range(5):
-            await self._human_delay(3.0, 6.0)
+        max_steps = 8
+        step = 0
+
+        while step < max_steps:
+            await self._human_delay(2.0, 4.0)
 
             if await self._check_captcha(page):
                 await self._take_screenshot(page, "captcha_in_form")
                 raise RuntimeError("CAPTCHA detected during form — stopping")
 
+            # Fill fields on the current page
+            await self.fill_form_fields(page)
+            await self._human_delay(1.0, 2.0)
+
             # Submit button — we're done
             submit_btn = await page.query_selector(
                 'button[aria-label*="Submit application"], '
-                'button[aria-label="Submit application"]'
+                'button:has-text("Submit application")'
             )
             if submit_btn:
-                await self._human_delay(1.0, 2.0)
+                self.logger.info("Found Submit button — submitting application")
                 await self._human_click(submit_btn)
-                await asyncio.sleep(2.0)
-                self.logger.info(f"Application submitted (step {step + 1})")
+                await self._human_delay(2.0, 3.0)
                 return True
 
             # Review button
             review_btn = await page.query_selector(
-                'button[aria-label*="Review"], button[aria-label="Review your application"]'
+                'button[aria-label*="Review"], '
+                'button:has-text("Review")'
             )
             if review_btn:
+                self.logger.info("Clicking Review button")
                 await self._human_click(review_btn)
+                step += 1
                 continue
 
-            # Next button — fill current page first
+            # Next button
             next_btn = await page.query_selector(
-                'button[aria-label*="Continue to next step"], '
-                'button[aria-label*="Next"]'
+                'button[aria-label*="Continue"], '
+                'button:has-text("Next")'
             )
             if next_btn:
-                await self.fill_form_fields(page)
-                await self._human_delay(1.0, 2.0)
+                # Check for validation errors before advancing
+                errors = await page.query_selector_all(
+                    '[data-test="inline-error"], '
+                    '.fb-form-element__error-text, '
+                    'p.artdeco-inline-feedback--error, '
+                    '[aria-live="assertive"]'
+                )
+                if errors:
+                    error_texts = []
+                    for e in errors:
+                        txt = await e.inner_text()
+                        if txt.strip():
+                            error_texts.append(txt.strip())
+                    if error_texts:
+                        self.logger.warning(f"Validation errors on form: {error_texts}")
+                        await self.fill_form_fields(page)
+                        await self._human_delay(1.0, 2.0)
+
+                # Capture content before clicking to detect if we advanced
+                try:
+                    current_content = await page.inner_text(
+                        '.jobs-easy-apply-modal, [role="dialog"]'
+                    )
+                except Exception:
+                    current_content = ""
+
+                self.logger.info(f"Clicking Next (step {step + 1})")
                 await self._human_click(next_btn)
+                await self._human_delay(2.0, 3.0)
+
+                try:
+                    new_content = await page.inner_text(
+                        '.jobs-easy-apply-modal, [role="dialog"]'
+                    )
+                except Exception:
+                    new_content = ""
+
+                if new_content and new_content == current_content:
+                    self.logger.warning("Form did not advance — likely a validation error")
+                    await self._take_screenshot(page, f"stuck_form_step{step}")
+                    return False
+
+                step += 1
                 continue
 
             self.logger.error(f"No Next/Review/Submit button found on step {step + 1}")
+            await self._take_screenshot(page, f"no_button_step{step}")
             return False
 
-        self.logger.error("Exceeded 5 form steps — something is wrong")
+        self.logger.error(f"Exceeded {max_steps} form steps")
         return False
 
     # ── Single job application ─────────────────────────────────────────────────

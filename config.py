@@ -13,6 +13,10 @@ TARGET_TITLES: list[str] = ["Software Engineer", "Backend Engineer", "Full Stack
 TARGET_LOCATION: str = ""       # human-readable label (used in logs only)
 LINKEDIN_GEO_ID: str = "105214831"  # LinkedIn geoId — 102713980=India, 105214831=Bangalore
 EXPERIENCE_YEARS: int = 0       # My years of experience (for filtering)
+PHONE_NUMBER: str = "9884561353"  # Local digits only — country code already selected in form
+CURRENT_CTC: int = 0           # Fresher — no current CTC
+EXPECTED_CTC: int = 500000     # 5 LPA in rupees
+NOTICE_PERIOD_DAYS: int = 0    # Immediate joiner
 MIN_FIT_SCORE: int = 6          # Only apply to jobs scoring 6+
 REMOTE_ONLY: bool = False       # Set True to filter remote-only jobs
 
