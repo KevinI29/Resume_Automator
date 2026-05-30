@@ -156,40 +156,50 @@ class LinkedInApplicant:
 
     # ── Navigation ─────────────────────────────────────────────────────────────
 
-    async def navigate_to_job(self, page: Page, url: str) -> bool:
-        """Navigate to the job URL and simulate reading it. Returns False if job is closed."""
+    async def navigate_to_job(self, page: Page, url: str) -> str | None:
+        """Navigate to the job URL. Returns 'open', 'closed', 'applied', or None on error."""
         try:
             await page.goto(url, wait_until="load", timeout=30000)
-            await self._human_delay(4.0, 6.0)  # give LinkedIn JS time to render
+            await self._human_delay(4.0, 6.0)
 
             # Check if we need to log in
             if await page.query_selector('input[name="session_key"]'):
                 self.logger.warning("Not logged in — please log in in the browser window")
                 input("Press Enter after logging in...")
                 await page.goto(url, wait_until="load", timeout=30000)
-                await self._human_delay(4.0, 6.0)  # give LinkedIn JS time to render
+                await self._human_delay(4.0, 6.0)
 
             if await self._check_captcha(page):
                 await self._take_screenshot(page, "captcha")
                 raise RuntimeError("CAPTCHA detected — stopping automation")
 
-            content = await page.content()
-            if any(phrase in content for phrase in [
-                "No longer accepting applications",
-                "This job is no longer accepting",
-                "no longer available",
-            ]):
-                self.logger.info(f"Job is closed: {url}")
-                return False
+            page_lower = (await page.inner_text("body")).lower()
+
+            # State 1: Job removed / invalid link
+            if ("unable to load the page" in page_lower
+                    or "job posting has been removed" in page_lower
+                    or "not be valid" in page_lower):
+                self.logger.info(f"Job removed/invalid: {url}")
+                return "closed"
+
+            # State 2: Already applied — check BEFORE expired (page can show both)
+            if "application submitted" in page_lower:
+                self.logger.info(f"Already applied to this job: {url}")
+                return "applied"
+
+            # State 3: No longer accepting
+            if "no longer accepting" in page_lower or "no longer available" in page_lower:
+                self.logger.info(f"Job closed: {url}")
+                return "closed"
 
             await self._scroll_job_page(page)
-            return True
+            return "open"
 
         except RuntimeError:
             raise
         except Exception as exc:
             self.logger.error(f"Navigation failed: {exc}")
-            return False
+            return None
 
     # ── Easy Apply modal ───────────────────────────────────────────────────────
 
@@ -224,16 +234,30 @@ class LinkedInApplicant:
                     await btn.scroll_into_view_if_needed()
                     await self._human_delay(0.5, 1.5)
                     await self._human_click(btn)
+                    modal_sel = (
+                        'div.jobs-easy-apply-modal, '
+                        'h2#jobs-apply-header, '
+                        'div[data-test-modal-id="easy-apply-modal"]'
+                    )
                     try:
-                        await page.wait_for_selector(
-                            '.jobs-easy-apply-modal, [data-test-modal], '
-                            '[role="dialog"], .artdeco-modal',
-                            timeout=8000,
-                        )
+                        await page.wait_for_selector(modal_sel, timeout=8000)
                         self.logger.info("Easy Apply modal opened")
                         return True
                     except Exception:
-                        self.logger.debug(f"Modal did not appear after clicking {sel}")
+                        self.logger.info(f"Modal not found — retrying click with {sel}")
+                        await page.evaluate("window.scrollTo(0, 0)")
+                        await self._human_delay(1.5, 2.5)
+                        btn2 = await page.query_selector(sel)
+                        if btn2:
+                            await btn2.scroll_into_view_if_needed()
+                            await self._human_click(btn2)
+                            try:
+                                await page.wait_for_selector(modal_sel, timeout=8000)
+                                self.logger.info("Easy Apply modal opened (retry)")
+                                return True
+                            except Exception:
+                                pass
+                        self.logger.debug(f"Modal did not appear after retry with {sel}")
                         continue
             except Exception as e:
                 self.logger.debug(f"Selector {sel} error: {e}")
@@ -247,6 +271,21 @@ class LinkedInApplicant:
             aria = await b.get_attribute('aria-label') or ''
             button_texts.append(f"text='{txt.strip()}' aria='{aria}'")
         self.logger.warning(f"Easy Apply button not found. Page buttons: {button_texts}")
+
+        # Check if this is an external-apply job (valid but not Easy Apply)
+        try:
+            external_btn = await page.query_selector(
+                "button.jobs-apply-button:not([aria-label*='Easy Apply']), "
+                "a.jobs-apply-button, "
+                "button[aria-label='Apply'], "
+                "a[aria-label='Apply']"
+            )
+            page_body = (await page.inner_text("body")).lower()
+            if external_btn or "managed off linkedin" in page_body:
+                self.logger.info("External apply job detected — marking as manual")
+                return "external"
+        except Exception:
+            pass
 
         await self._take_screenshot(page, "no_easyapply")
         return False
@@ -401,7 +440,40 @@ class LinkedInApplicant:
             ["male", "prefer not", "not to say"]
         )
 
-        # --- Work authorization radios ---
+        # --- Fieldset/legend-based radio questions (LinkedIn screening questions) ---
+        # LinkedIn puts "Are you currently a student?" etc. in <fieldset><legend> — not <label>
+        try:
+            fieldsets = await page.query_selector_all(
+                '.jobs-easy-apply-modal fieldset, [role="dialog"] fieldset'
+            )
+            for fieldset in fieldsets:
+                legend = await fieldset.query_selector('legend')
+                legend_text = (await legend.inner_text()).lower().strip() if legend else ''
+
+                radios = await fieldset.query_selector_all('input[type="radio"]')
+                if not radios:
+                    continue
+
+                any_checked = False
+                for r in radios:
+                    if await r.is_checked():
+                        any_checked = True
+                        break
+                if any_checked:
+                    continue
+
+                if not legend_text:
+                    self.logger.info("Field group has no label — applying type-based fallback")
+
+                await self._human_click(radios[0])
+                self.logger.info(
+                    f"Selected first radio for: '{legend_text or 'unlabeled fieldset'}'"
+                )
+                await self._human_delay(0.3, 0.7)
+        except Exception as exc:
+            self.logger.warning(f"Fieldset radio handling warning: {exc}")
+
+        # --- Work authorization radios (aria-label based fallback) ---
         try:
             radios = await page.query_selector_all('input[type="radio"]')
             for radio in radios:
@@ -438,10 +510,10 @@ class LinkedInApplicant:
         except Exception as exc:
             self.logger.warning(f"Experience fill warning (non-fatal): {exc}")
 
-        # --- Log any remaining empty required fields for debugging ---
+        # --- Log any remaining empty required text/number inputs (excludes radios/checkboxes) ---
         required_inputs = await page.query_selector_all(
-            'input[required]:not([type="hidden"]), '
-            'input[aria-required="true"]:not([type="hidden"])'
+            'input[required]:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), '
+            'input[aria-required="true"]:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'
         )
         for inp in required_inputs:
             val = await inp.input_value()
@@ -463,6 +535,7 @@ class LinkedInApplicant:
         """
         max_steps = 8
         step = 0
+        review_retries = 0
 
         while step < max_steps:
             await self._human_delay(2.0, 4.0)
@@ -492,10 +565,41 @@ class LinkedInApplicant:
                 'button:has-text("Review")'
             )
             if review_btn:
-                self.logger.info("Clicking Review button")
-                await self._human_click(review_btn)
-                step += 1
-                continue
+                if review_retries > 2:
+                    self.logger.warning(
+                        "Required fields could not be filled — proceeding anyway"
+                    )
+                    # Fall through to Next button check below
+                else:
+                    try:
+                        current_content = await page.inner_text(
+                            '.jobs-easy-apply-modal, [role="dialog"]'
+                        )
+                    except Exception:
+                        current_content = ""
+
+                    self.logger.info(f"Clicking Review button (attempt {review_retries + 1})")
+                    await self._human_click(review_btn)
+                    await self._human_delay(2.0, 3.0)
+
+                    try:
+                        new_content = await page.inner_text(
+                            '.jobs-easy-apply-modal, [role="dialog"]'
+                        )
+                    except Exception:
+                        new_content = ""
+
+                    if new_content and new_content == current_content:
+                        review_retries += 1
+                        self.logger.warning(
+                            f"Review did not advance form (attempt {review_retries})"
+                        )
+                        await self.fill_form_fields(page)
+                        continue
+                    else:
+                        review_retries = 0
+                        step += 1
+                        continue
 
             # Next button
             next_btn = await page.query_selector(
@@ -569,11 +673,32 @@ class LinkedInApplicant:
         try:
             self.logger.info(f"Applying: {job.title} @ {job.company} (ID {job.id})")
 
-            if not await self.navigate_to_job(page, job.url):
-                db.update_job_status(job.id, "closed")
+            nav_result = await self.navigate_to_job(page, job.url)
+            if nav_result != "open":
+                db.update_job_status(job.id, nav_result or "closed")
                 return False
 
-            if not await self.click_easy_apply(page):
+            # Dismiss LinkedIn messaging overlay if open
+            try:
+                for close_sel in [
+                    "button[aria-label='Dismiss']",
+                    ".msg-overlay-bubble-header__control--close-btn",
+                ]:
+                    close_btn = page.locator(close_sel)
+                    if await close_btn.count() > 0:
+                        await close_btn.first.click()
+                        await self._human_delay(1.0, 2.0)
+                        self.logger.info("Dismissed messaging overlay")
+                        break
+            except Exception:
+                pass
+
+            easy_apply_result = await self.click_easy_apply(page)
+            if easy_apply_result == "external":
+                db.update_job_status(job.id, "manual")
+                self.logger.info(f"Marked as manual apply: {job.title} @ {job.company}")
+                return False
+            elif not easy_apply_result:
                 await self._take_screenshot(page, f"no_easyapply_{job.id}")
                 return False
 

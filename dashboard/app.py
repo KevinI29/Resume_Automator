@@ -1,7 +1,10 @@
 import asyncio
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -26,6 +29,10 @@ _pipeline_status: dict = {
     "last_run_new_jobs": 0,
     "last_run_scored": 0,
 }
+
+_running_applies: dict[int, int] = {}  # job_id → subprocess PID
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 # ── Pages ─────────────────────────────────────────────────────────────────────
@@ -104,22 +111,70 @@ async def download_resume(job_id: int):
 # ── Apply API ─────────────────────────────────────────────────────────────────
 
 @app.post("/api/jobs/{job_id}/apply")
-async def apply_job(job_id: int, background_tasks: BackgroundTasks):
+async def apply_job(job_id: int):
     job = db.get_job_by_id(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if job.status != "approved" or not job.resume_path or job.resume_path == "failed":
-        raise HTTPException(status_code=400, detail="Job not ready — must be approved with a resume")
-    background_tasks.add_task(_apply_background, job_id)
-    return {"status": "applying"}
+        raise HTTPException(
+            status_code=400,
+            detail="Job not ready — must be approved with a resume",
+        )
+    log_dir = _PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"apply_{job_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    with open(log_file, "w") as lf:
+        proc = subprocess.Popen(
+            [sys.executable, "applicant.py", "--single", str(job_id)],
+            cwd=_PROJECT_ROOT,
+            stdout=lf,
+            stderr=lf,
+        )
+    _running_applies[job_id] = proc.pid
+    return {"status": "applying", "pid": proc.pid}
+
+
+@app.get("/api/jobs/{job_id}/apply-status")
+async def apply_status(job_id: int):
+    job = db.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    pid = _running_applies.get(job_id)
+    is_running = False
+    if pid:
+        try:
+            os.kill(pid, 0)  # signal 0 = existence check only
+            is_running = True
+        except (OSError, ProcessLookupError):
+            is_running = False
+        if not is_running:
+            _running_applies.pop(job_id, None)
+
+    return {
+        "status": job.status,
+        "applied": job.status == "applied",
+        "running": is_running,
+    }
 
 
 @app.post("/api/apply-all")
-async def apply_all(background_tasks: BackgroundTasks):
+async def apply_all():
     jobs = db.get_approved_jobs_with_resume()
     if not jobs:
         return {"status": "no_jobs", "count": 0}
-    background_tasks.add_task(_apply_batch_background, [j.id for j in jobs])
+    log_dir = _PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"apply_all_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    with open(log_file, "w") as lf:
+        proc = subprocess.Popen(
+            [sys.executable, "applicant.py"],
+            cwd=_PROJECT_ROOT,
+            stdout=lf,
+            stderr=lf,
+        )
+    for j in jobs:
+        _running_applies[j.id] = proc.pid
     return {"status": "started", "count": len(jobs)}
 
 
@@ -164,39 +219,6 @@ async def _tailor_background(job_id: int) -> None:
         db.update_job_resume_path(job_id, "failed")
 
 
-async def _apply_background(job_id: int) -> None:
-    import logging
-    log = logging.getLogger("dashboard.apply")
-    try:
-        from applicant import LinkedInApplicant
-        job = db.get_job_by_id(job_id)
-        if not job:
-            return
-        applicant = LinkedInApplicant()
-        await applicant.setup_browser()
-        await applicant.apply_to_job(job)
-        await applicant.close()
-    except Exception as exc:
-        import logging as _l
-        _l.getLogger("dashboard.apply").error(f"Apply background task failed for job {job_id}: {exc}")
-
-
-async def _apply_batch_background(job_ids: list[int]) -> None:
-    import logging
-    log = logging.getLogger("dashboard.apply")
-    try:
-        from applicant import LinkedInApplicant
-        jobs = [j for j_id in job_ids if (j := db.get_job_by_id(j_id))]
-        if not jobs:
-            return
-        applicant = LinkedInApplicant()
-        await applicant.setup_browser()
-        results = await applicant.apply_batch(jobs)
-        await applicant.close()
-        log.info(f"Apply-all complete: {results}")
-    except Exception as exc:
-        log.error(f"Apply-all background task failed: {exc}")
-
 
 async def _pipeline_background() -> None:
     import logging
@@ -225,5 +247,7 @@ async def _pipeline_background() -> None:
 
 if __name__ == "__main__":
     import uvicorn
+    assert (_PROJECT_ROOT / "applicant.py").exists(), \
+        f"applicant.py not found in _PROJECT_ROOT={_PROJECT_ROOT}"
     db.init_db()
     uvicorn.run("dashboard.app:app", host="127.0.0.1", port=8000, reload=True)

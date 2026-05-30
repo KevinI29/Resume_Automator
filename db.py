@@ -163,6 +163,7 @@ def get_stats() -> dict:
         approved = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'approved'").fetchone()[0]
         applied = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'applied'").fetchone()[0]
         skipped = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'skipped'").fetchone()[0]
+        manual = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'manual'").fetchone()[0]
         above = conn.execute(
             "SELECT COUNT(*) FROM jobs WHERE fit_score >= ?", (config.MIN_FIT_SCORE,)
         ).fetchone()[0]
@@ -172,6 +173,7 @@ def get_stats() -> dict:
         "approved": approved,
         "applied": applied,
         "skipped": skipped,
+        "manual": manual,
         "above_threshold": above,
     }
 

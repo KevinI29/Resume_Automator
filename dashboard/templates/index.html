@@ -342,6 +342,9 @@ body {
 .btn-apply:hover:not(:disabled) { background: #1d4ed8; }
 .btn-applying        { background: #1e1b4b; color: #a5b4fc; cursor: default; }
 .btn-applied         { background: #14532d; color: #86efac; cursor: default; }
+.btn-manual          { background: #431407; color: #fdba74; cursor: default; }
+.btn-linkedin        { background: #1e3a5f; color: #93c5fd; }
+.btn-linkedin:hover  { background: #1d4ed8; }
 
 /* ── Modal ───────────────────────────────────────────────────────── */
 .overlay {
@@ -505,6 +508,9 @@ body {
   <button class="filter-btn" data-status="skipped" onclick="setFilter(this)">
     Skipped <span class="filter-count" id="fc-skipped">—</span>
   </button>
+  <button class="filter-btn" data-status="manual" onclick="setFilter(this)">
+    Manual <span class="filter-count" id="fc-manual">—</span>
+  </button>
 
   <div class="sidebar-footer">
     <button class="pipeline-btn" id="pipeline-btn" onclick="runPipeline()">
@@ -575,6 +581,7 @@ async function loadStats() {
     document.getElementById('fc-approved').textContent = s.approved;
     document.getElementById('fc-applied').textContent  = s.applied;
     document.getElementById('fc-skipped').textContent  = s.skipped;
+    document.getElementById('fc-manual').textContent   = s.manual || 0;
   } catch { toast('Failed to load stats', 'err'); }
 }
 
@@ -650,6 +657,9 @@ function renderActions(j) {
   let applyBtn = '';
   if (j.status === 'applied') {
     applyBtn = `<span class="btn btn-applied">✓ Applied</span>`;
+  } else if (j.status === 'manual') {
+    applyBtn = `<span class="btn btn-manual">⚠ Manual</span>`
+             + `<a class="btn btn-linkedin" href="${esc(j.url)}" target="_blank" onclick="event.stopPropagation()">Open LinkedIn ↗</a>`;
   } else if (j.status === 'approved' && j.resume_path && j.resume_path !== 'failed') {
     applyBtn = `<button class="btn btn-apply" onclick="applyJob(event,${j.id})">Apply</button>`;
   }
@@ -775,10 +785,11 @@ async function pollApplyStatus(id, tries = 0) {
   await sleep(5000);
   try {
     const j = await api(`/api/jobs/${id}`);
-    if (j.status === 'applied' || j.status === 'failed' || j.status === 'closed') {
+    if (j.status === 'applied' || j.status === 'failed' || j.status === 'closed' || j.status === 'manual') {
       refreshCard(j);
       loadStats();
       if (j.status === 'applied') toast(`✓ Applied: ${j.title}`, 'ok');
+      else if (j.status === 'manual') toast(`Manual apply required: ${j.title}`, 'ok');
       else toast(`Apply ${j.status}: ${j.title}`, 'err');
       return;
     }
@@ -820,7 +831,7 @@ function setFilter(btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentFilter = btn.dataset.status;
-  const labels = {'':'All jobs','new':'New jobs','approved':'Approved jobs','applied':'Applied jobs','skipped':'Skipped jobs'};
+  const labels = {'':'All jobs','new':'New jobs','approved':'Approved jobs','applied':'Applied jobs','skipped':'Skipped jobs','manual':'Manual apply jobs'};
   document.getElementById('topbar-label').textContent = `Showing ${labels[currentFilter] || currentFilter}`;
   loadJobs(currentFilter);
 }
