@@ -61,6 +61,7 @@ Return the complete resume JSON with your modifications applied."""
             raw = response.content[0].text.strip()
             raw = raw.replace("```json", "").replace("```", "").strip()
             tailored = json.loads(raw)
+            self.logger.info(f"Tailored summary preview: {tailored['summary'][:200]}")
 
             if set(tailored.keys()) != set(self.master.keys()):
                 self.logger.warning(

@@ -4,7 +4,9 @@ Usage:
   python run.py scrape       # scrape new jobs only
   python run.py score        # score unscored jobs only
   python run.py tailor       # tailor + render resumes for approved jobs
+  python run.py apply        # apply to all approved jobs with resumes
   python run.py pipeline     # scrape → score (normal daily run)
+  python run.py dashboard    # start local review dashboard on :8000
 """
 import asyncio
 import json
@@ -82,8 +84,30 @@ if __name__ == "__main__":
                 db.update_job_resume_path(job.id, pdf_path)
                 console.print(f"[green]✓[/green] {job.title} @ {job.company} → {pdf_path}")
         asyncio.run(_tailor())
+    elif command == "apply":
+        from applicant import LinkedInApplicant
+        import db as _db
+        async def _apply() -> None:
+            jobs = _db.get_approved_jobs_with_resume()
+            if not jobs:
+                console.print("[yellow]No approved jobs with resumes ready.[/yellow]")
+                return
+            console.print(f"[bold]Found {len(jobs)} job(s) ready to apply[/bold]")
+            applicant = LinkedInApplicant()
+            await applicant.setup_browser()
+            results = await applicant.apply_batch(jobs)
+            await applicant.close()
+            console.print(f"[green]Applied:  {results['applied']}[/green]")
+            console.print(f"[red]Failed:   {results['failed']}[/red]")
+            console.print(f"[yellow]Skipped:  {results['skipped']}[/yellow]")
+        asyncio.run(_apply())
     elif command == "pipeline":
         asyncio.run(run_pipeline())
+    elif command == "dashboard":
+        import uvicorn
+        import db as _db
+        _db.init_db()
+        uvicorn.run("dashboard.app:app", host="127.0.0.1", port=8000, reload=True)
     else:
         console.print(f"[red]Unknown command: {command}[/red]")
-        console.print("Usage: python run.py [scrape|score|tailor|pipeline]")
+        console.print("Usage: python run.py [scrape|score|tailor|apply|pipeline|dashboard]")

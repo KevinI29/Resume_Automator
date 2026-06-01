@@ -26,7 +26,7 @@ Python 3.11+
 httpx          — LinkedIn API calls (async)
 playwright     — Easy Apply browser automation
 anthropic      — Claude API (scoring + tailoring)
-weasyprint     — HTML/CSS resume → PDF
+wkhtmltopdf    — HTML/CSS resume → PDF
 fastapi        — Local dashboard
 sqlite3        — Job tracking database
 jinja2         — Resume PDF template
@@ -122,6 +122,6 @@ Logger → Everything written to SQLite + log files
 - [x] Session 2 — Scraper (LinkedIn voyager API)
 - [x] Session 3 — Scorer (Haiku integration)
 - [x] Session 4 — Resume tailor + PDF renderer
-- [ ] Session 5 — Dashboard (FastAPI)
-- [ ] Session 6 — Easy Apply automation (Playwright)
+- [x] Session 5 — Dashboard (FastAPI)
+- [x] Session 6 — Easy Apply automation (Playwright)
 - [ ] Opus Review — Auth/session safety review before going live
