@@ -15,7 +15,7 @@ LINKEDIN_GEO_ID: str = "105214831"  # LinkedIn geoId — 102713980=India, 105214
 EXPERIENCE_YEARS: int = 1       # My years of experience (for filtering)
 PHONE_NUMBER: str = "9884561353"  # Local digits only — country code already selected in form
 CURRENT_CTC: int = 340000           # Fresher — no current CTC
-EXPECTED_CTC: int = 600000     # 5 LPA in rupees
+EXPECTED_CTC: int = 700000     # 5 LPA in rupees
 NOTICE_PERIOD_DAYS: int = 90    # Immediate joiner
 MIN_FIT_SCORE: int = 6          # Only apply to jobs scoring 6+
 REMOTE_ONLY: bool = False       # Set True to filter remote-only jobs
@@ -27,11 +27,18 @@ MIN_DELAY_SECONDS: int = 3
 MAX_DELAY_SECONDS: int = 8
 
 # Paths
-DB_PATH: str = "job_auto.db"
+DB_PATH: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "job_auto.db")
 RESUME_MASTER_PATH: str = "resume/master.json"
 RESUME_TEMPLATE_PATH: str = "resume/template.html"
 OUTPUT_RESUME_DIR: str = "output/resumes"
 LOG_DIR: str = "logs"
+
+# Job expiry settings
+JOB_EXPIRY_HOURS = 48           # Jobs older than this get a visual warning in the dashboard
+
+# Resume backup settings
+RESUME_BACKUP_DIR = "resume/backups"   # Where timestamped master.json backups are stored
+MAX_RESUME_BACKUPS = 10               # Keep only the N most recent backups; delete older ones
 
 # pdfkit — path to wkhtmltopdf binary (download from https://wkhtmltopdf.org/downloads.html)
 WKHTMLTOPDF_PATH: str = os.getenv(

@@ -18,6 +18,15 @@ def _conn() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
+@contextmanager
+def get_connection():
+    conn = sqlite3.connect(config.DB_PATH)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     with _conn() as conn:
         conn.executescript("""
@@ -52,6 +61,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE jobs ADD COLUMN resume_path TEXT")
         except Exception:
             pass
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN validated_at TIMESTAMP")
+        except Exception:
+            pass  # column already exists in this database
 
 
 def insert_job(job: Job) -> None:
@@ -157,24 +170,40 @@ def get_job_by_id(job_id: int) -> Job | None:
 
 
 def get_stats() -> dict:
-    with _conn() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
-        new = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'new'").fetchone()[0]
-        approved = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'approved'").fetchone()[0]
-        applied = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'applied'").fetchone()[0]
-        skipped = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'skipped'").fetchone()[0]
-        manual = conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'manual'").fetchone()[0]
-        above = conn.execute(
-            "SELECT COUNT(*) FROM jobs WHERE fit_score >= ?", (config.MIN_FIT_SCORE,)
-        ).fetchone()[0]
+    """
+    Returns job counts grouped by status, plus a count of 'new' jobs that
+    are likely expired based on JOB_EXPIRY_HOURS.
+    Used by the dashboard GET /api/stats endpoint.
+    """
+    from config import JOB_EXPIRY_HOURS
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT status, COUNT(*) FROM jobs GROUP BY status")
+        rows = cursor.fetchall()
+        counts = {row[0]: row[1] for row in rows}
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM jobs
+            WHERE status = 'new'
+            AND created_at < datetime('now', ?)
+            """,
+            (f"-{JOB_EXPIRY_HOURS} hours",),
+        )
+        likely_expired = cursor.fetchone()[0]
+
     return {
-        "total": total,
-        "new": new,
-        "approved": approved,
-        "applied": applied,
-        "skipped": skipped,
-        "manual": manual,
-        "above_threshold": above,
+        "total": sum(counts.values()),
+        "new": counts.get("new", 0),
+        "approved": counts.get("approved", 0),
+        "applied": counts.get("applied", 0),
+        "skipped": counts.get("skipped", 0),
+        "manual": counts.get("manual", 0),
+        "closed": counts.get("closed", 0),
+        "failed": counts.get("failed", 0),
+        "likely_expired": likely_expired,
     }
 
 
@@ -214,3 +243,168 @@ def get_daily_application_count() -> int:
             "SELECT COUNT(*) FROM jobs WHERE status = 'applied' AND date(applied_at) = date('now')"
         ).fetchone()
     return row[0]
+
+
+def get_all_jobs_sorted(
+    sort_by: str = "score",
+    order: str = "desc",
+    search: str = "",
+    status: str = "",
+) -> list[Job]:
+    """
+    Returns jobs with optional sorting, full-text search, and status filter.
+    All parameters are optional. Default behavior matches get_all_jobs() sorted by score desc.
+    Used exclusively by the dashboard GET /api/jobs endpoint.
+    """
+    sort_columns = {
+        "score": "fit_score",
+        "date": "created_at",
+        "company": "company",
+    }
+    col = sort_columns.get(sort_by, "fit_score")
+    direction = "DESC" if order == "desc" else "ASC"
+
+    conditions = []
+    params: list = []
+
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+
+    if search:
+        conditions.append(
+            "(title LIKE ? OR company LIKE ? OR description LIKE ?)"
+        )
+        term = f"%{search}%"
+        params.extend([term, term, term])
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    query = f"SELECT * FROM jobs {where_clause} ORDER BY {col} {direction}"
+
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [Job(**dict(row)) for row in rows]
+
+
+def get_likely_expired_jobs(hours: int | None = None) -> list[Job]:
+    """
+    Returns jobs with status='new' that are older than `hours` hours.
+    Used for the dashboard's passive expiry warning badges.
+    If hours is None, reads JOB_EXPIRY_HOURS from config.
+    """
+    if hours is None:
+        from config import JOB_EXPIRY_HOURS
+        hours = JOB_EXPIRY_HOURS
+
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM jobs
+            WHERE status = 'new'
+            AND created_at < datetime('now', ?)
+            ORDER BY created_at ASC
+            """,
+            (f"-{hours} hours",),
+        )
+        rows = cursor.fetchall()
+        return [Job(**dict(row)) for row in rows]
+
+
+def purge_dead_jobs() -> tuple[int, list[str]]:
+    """
+    Deletes all jobs with status 'closed' or 'failed', plus their associated
+    application records. Returns the count of deleted jobs and a list of
+    resume file paths so the caller can clean up files on disk.
+
+    Does NOT delete: new, approved, applied, skipped, manual, expired jobs.
+    The caller is responsible for any on-disk file deletion.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT resume_path FROM jobs
+            WHERE status IN ('closed', 'failed')
+            AND resume_path IS NOT NULL
+            AND resume_path != ''
+            AND resume_path != 'failed'
+            """
+        )
+        paths = [row[0] for row in cursor.fetchall()]
+
+        cursor.execute(
+            """
+            DELETE FROM applications
+            WHERE job_id IN (
+                SELECT id FROM jobs WHERE status IN ('closed', 'failed')
+            )
+            """
+        )
+
+        cursor.execute("DELETE FROM jobs WHERE status IN ('closed', 'failed')")
+        count = cursor.rowcount
+        conn.commit()
+        return count, paths
+
+
+def update_job_field(job_id: int, field: str, value) -> None:
+    """
+    Updates a single field on a job row.
+    Only allows whitelisted field names to prevent SQL injection through
+    the column name (which cannot be parameterized with `?`).
+    Used by validator.py to update is_easy_apply without touching status.
+    """
+    _ALLOWED_FIELDS = {
+        "is_easy_apply",
+        "status",
+        "fit_score",
+        "resume_path",
+        "validated_at",
+        "expires_at",
+    }
+    if field not in _ALLOWED_FIELDS:
+        raise ValueError(
+            f"update_job_field: '{field}' is not a writable field. "
+            f"Allowed: {sorted(_ALLOWED_FIELDS)}"
+        )
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE jobs SET {field} = ? WHERE id = ?",
+            (value, job_id),
+        )
+        conn.commit()
+
+
+def unskip_job(job_id: int) -> bool:
+    """
+    Moves a single skipped job back to 'new' status.
+    Returns True if the job was found and updated, False if not found
+    or if it was not in 'skipped' status.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE jobs SET status = 'new' WHERE id = ? AND status = 'skipped'",
+            (job_id,),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def unskip_all_jobs() -> int:
+    """
+    Moves ALL jobs with status='skipped' back to status='new'.
+    Returns the count of jobs restored.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE jobs SET status = 'new' WHERE status = 'skipped'")
+        conn.commit()
+        return cursor.rowcount

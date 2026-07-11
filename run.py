@@ -4,6 +4,7 @@ Usage:
   python run.py scrape       # scrape new jobs only
   python run.py score        # score unscored jobs only
   python run.py tailor       # tailor + render resumes for approved jobs
+  python run.py validate     # validate unvalidated jobs above threshold
   python run.py apply        # apply to all approved jobs with resumes
   python run.py pipeline     # scrape → score (normal daily run)
   python run.py dashboard    # start local review dashboard on :8000
@@ -101,6 +102,9 @@ if __name__ == "__main__":
             console.print(f"[red]Failed:   {results['failed']}[/red]")
             console.print(f"[yellow]Skipped:  {results['skipped']}[/yellow]")
         asyncio.run(_apply())
+    elif command == "validate":
+        from validator import _main as _validator_main
+        asyncio.run(_validator_main())
     elif command == "pipeline":
         asyncio.run(run_pipeline())
     elif command == "dashboard":
@@ -110,4 +114,4 @@ if __name__ == "__main__":
         uvicorn.run("dashboard.app:app", host="127.0.0.1", port=8000, reload=True)
     else:
         console.print(f"[red]Unknown command: {command}[/red]")
-        console.print("Usage: python run.py [scrape|score|tailor|apply|pipeline|dashboard]")
+        console.print("Usage: python run.py [scrape|score|tailor|validate|apply|pipeline|dashboard]")
