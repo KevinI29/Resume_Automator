@@ -4,936 +4,1348 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Job Auto</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap');
+
 :root {
-  --bg:      #0f1117;
-  --card:    #1a1d27;
-  --border:  #2a2d3a;
-  --accent:  #6366f1;
-  --accent2: #4f46e5;
-  --green:   #22c55e;
-  --yellow:  #eab308;
-  --red:     #ef4444;
-  --text:    #e2e8f0;
-  --muted:   #94a3b8;
-  --dim:     #475569;
-  --mono:    'IBM Plex Mono', monospace;
-  --sans:    'Inter', sans-serif;
+    --bg-primary:   #0f1117;
+    --bg-card:      #1a1d27;
+    --bg-sidebar:   #0d0f1a;
+    --border:       #1e2130;
+    --border-hover: #2a2d3e;
+    --accent:       #6366f1;
+    --success:      #22c55e;
+    --warning:      #eab308;
+    --danger:       #ef4444;
+    --info:         #3b82f6;
+    --orange:       #f97316;
+    --text-primary: #f1f5f9;
+    --text-muted:   #64748b;
+    --text-dim:     #374151;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
+html, body {
+    height: 100%;
+    overflow: hidden;
 }
+
+body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+a { color: inherit; text-decoration: none; }
+button, input, select { font-family: inherit; }
+
+/* ── Top bar ─────────────────────────────────────────────────────── */
+#top-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 64px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+}
+
+#logo {
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.top-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+#stat-pills {
+    display: flex;
+    gap: 8px;
+    flex-wrap: nowrap;
+}
+
+.stat-pill {
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.1s ease;
+    border: none;
+}
+.stat-pill:hover { opacity: 0.8; }
+.stat-pill--neutral { background: var(--border); color: #fff; }
+.stat-pill--accent  { background: var(--accent);  color: #fff; }
+.stat-pill--success { background: var(--success); color: #fff; }
+.stat-pill--info    { background: var(--info);    color: #fff; }
+.stat-pill--danger  { background: var(--danger);  color: #fff; }
+
+.top-bar-center {
+    display: flex;
+    justify-content: center;
+}
+
+#search-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 380px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+#search-wrapper:focus-within { border-color: var(--accent); }
+
+.search-icon { font-size: 13px; opacity: 0.6; }
+
+#search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    min-width: 0;
+}
+#search-input::placeholder { color: var(--text-muted); }
+
+#search-clear {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+}
+#search-clear:hover { color: var(--text-primary); }
+
+.top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+#btn-run-pipeline {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    transition: background 0.12s ease;
+}
+#btn-run-pipeline:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+#btn-run-pipeline:disabled { opacity: 0.6; cursor: not-allowed; }
+
+#btn-apply-all {
+    background: var(--success);
+    border: none;
+    color: #fff;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.12s ease;
+}
+#btn-apply-all:hover:not(:disabled) { opacity: 0.88; }
+#btn-apply-all:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────── */
-.sidebar {
-  width: 210px;
-  background: var(--card);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 20px 14px;
-  flex-shrink: 0;
+#sidebar {
+    position: fixed;
+    top: 64px; left: 0; bottom: 0;
+    width: 220px;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    padding: 16px 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
-.logo {
-  font-family: var(--mono);
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--accent);
-  margin-bottom: 24px;
-  letter-spacing: -0.5px;
+.sidebar-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 16px 0 6px 0;
+    padding-left: 4px;
 }
+.sidebar-label:first-child { margin-top: 0; }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
-  margin-bottom: 22px;
+.filter-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-muted);
+    border-left: 3px solid transparent;
+    transition: all 0.1s ease;
 }
-
-.stat-box {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 9px 6px;
-  text-align: center;
+.filter-row:hover:not(.active) { color: var(--text-primary); background: rgba(255,255,255,0.03); }
+.filter-row.active {
+    border-left: 3px solid var(--accent);
+    background: rgba(99, 102, 241, 0.08);
+    padding-left: 1px;
+    color: var(--text-primary);
 }
-
-.stat-value {
-  font-family: var(--mono);
-  font-size: 19px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.stat-label {
-  font-size: 9px;
-  color: var(--muted);
-  margin-top: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.filter-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--dim);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 6px;
-}
-
-.filter-btn {
-  width: 100%;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--muted);
-  font-family: var(--sans);
-  font-size: 13px;
-  padding: 7px 9px;
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2px;
-  transition: all 0.12s;
-}
-
-.filter-btn:hover { background: var(--bg); color: var(--text); }
-
-.filter-btn.active {
-  background: var(--bg);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
 .filter-count {
-  font-family: var(--mono);
-  font-size: 10px;
-  background: var(--border);
-  padding: 1px 6px;
-  border-radius: 10px;
-  color: var(--muted);
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 11px;
+    color: var(--text-muted);
 }
 
-.filter-btn.active .filter-count { background: #312e81; color: #a5b4fc; }
+#sort-select {
+    width: 100%;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+    margin-bottom: 12px;
+}
+#sort-select:focus { border-color: var(--accent); }
 
-.sidebar-footer { margin-top: auto; }
+.toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 5px 4px;
+}
+.toggle-row:hover { color: var(--text-primary); }
+.toggle-row input[type="checkbox"] { accent-color: var(--accent); }
 
-.pipeline-btn {
-  width: 100%;
-  background: var(--accent);
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 500;
-  padding: 10px;
-  cursor: pointer;
-  transition: background 0.12s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+.maint-btn {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: left;
+    padding: 6px 4px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+.maint-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.03); }
+.maint-btn--danger:hover { color: var(--danger); }
+.maint-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.nav-section {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.nav-link {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 6px 4px;
+    border-radius: 4px;
+}
+.nav-link:hover { color: var(--text-primary); }
+.nav-link--active { color: var(--accent); font-weight: 500; }
+
+/* ── Job grid ────────────────────────────────────────────────────── */
+#grid-area {
+    margin-left: 220px;
+    margin-top: 64px;
+    padding: 20px;
+    overflow-y: auto;
+    height: calc(100vh - 64px);
+    box-sizing: border-box;
 }
 
-.pipeline-btn:hover:not(:disabled) { background: var(--accent2); }
-.pipeline-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.pipeline-info {
-  font-size: 11px;
-  color: var(--dim);
-  text-align: center;
-  margin-top: 7px;
-  font-family: var(--mono);
-  min-height: 16px;
+#grid-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
 }
 
-/* ── Main ────────────────────────────────────────────────────────── */
-.main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.topbar {
-  padding: 18px 22px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.topbar-label {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--dim);
-  font-weight: 400;
-}
-
-.jobs-grid {
-  flex: 1;
-  overflow-y: auto;
-  padding: 18px 22px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
-  gap: 14px;
-  align-content: start;
-}
-
-.empty-state {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 80px 20px;
-  color: var(--dim);
-  font-size: 14px;
-  font-family: var(--mono);
+#job-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+    max-width: 1400px;
 }
 
 /* ── Job card ────────────────────────────────────────────────────── */
 .job-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 15px;
-  cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
-  animation: fadeIn 0.2s ease;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-
 .job-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.4);
-  border-color: #3a3d4a;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+    border-color: var(--border-hover);
 }
+.job-card--closed { opacity: 0.45; }
+.job-card--manual { background: color-mix(in srgb, var(--bg-card) 88%, black); }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.card-top {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 9px;
+.card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
 }
 
 .score-badge {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 20px;
-  flex-shrink: 0;
-  margin-top: 1px;
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 20px;
+    flex-shrink: 0;
+    margin-top: 1px;
 }
 
-.s-green  { background: #14532d; color: #86efac; }
-.s-indigo { background: #312e81; color: #a5b4fc; }
-.s-yellow { background: #713f12; color: #fde047; }
-
-.card-title-wrap { flex: 1; min-width: 0; }
+.card-title-block { flex: 1; min-width: 0; }
 
 .card-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .card-company {
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
 }
 
-.card-meta {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 9px;
-  flex-wrap: wrap;
+.expiry-icon {
+    font-size: 15px;
+    color: var(--orange);
+    flex-shrink: 0;
+    cursor: help;
 }
 
-.card-location { font-size: 11px; color: var(--dim); }
+.card-badges { display: flex; gap: 6px; flex-wrap: wrap; }
 
-.ea-badge {
-  font-size: 9px;
-  font-weight: 600;
-  background: #14532d;
-  color: #86efac;
-  padding: 2px 7px;
-  border-radius: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: inline-block;
+}
+.badge--easy   { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+.badge--manual { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
+.badge--expired {
+    background: color-mix(in srgb, var(--orange) 15%, transparent);
+    color: var(--orange);
+    border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent);
+    text-transform: none;
 }
 
-.card-reason {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-bottom: 9px;
+.fit-reason {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.5;
 }
 
-.card-date {
-  font-size: 10px;
-  color: var(--dim);
-  font-family: var(--mono);
-  margin-bottom: 11px;
+.card-meta-time {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
 }
 
-.card-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+.card-divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+.card-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
 /* ── Buttons ─────────────────────────────────────────────────────── */
 .btn {
-  border: none;
-  border-radius: 5px;
-  font-family: var(--sans);
-  font-size: 11px;
-  font-weight: 500;
-  padding: 5px 11px;
-  cursor: pointer;
-  transition: all 0.12s;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  text-decoration: none;
+    border: none;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    transition: opacity 0.12s ease;
+}
+.btn:hover:not(:disabled) { opacity: 0.85; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-approve  { background: color-mix(in srgb, var(--success) 22%, transparent); color: var(--success); }
+.btn-skip     { background: color-mix(in srgb, var(--danger) 22%, transparent);  color: var(--danger); }
+.btn-validate { background: color-mix(in srgb, var(--info) 22%, transparent);    color: var(--info); }
+.btn-view     { background: color-mix(in srgb, var(--text-muted) 15%, transparent); color: var(--text-muted); }
+.btn-view:hover:not(:disabled) { color: var(--text-primary); }
+.btn-download { background: color-mix(in srgb, var(--info) 22%, transparent);    color: var(--info); }
+.btn-tailoring{ background: color-mix(in srgb, var(--accent) 20%, transparent);  color: var(--accent); cursor: default; }
+.btn-restore  { background: color-mix(in srgb, var(--text-muted) 15%, transparent); color: var(--text-primary); }
+.btn-manual   { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
+
+.status-text {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 6px 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.status-text--success { color: var(--success); }
+.status-text--danger   { color: var(--danger); }
+.status-text--muted    { color: var(--text-muted); }
+
+.spin-icon {
+    display: inline-block;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty state ─────────────────────────────────────────────────── */
+.empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-title { font-size: 18px; color: var(--text-primary); margin-bottom: 8px; }
+.empty-message { font-size: 14px; }
+
+/* ── Detail panel ────────────────────────────────────────────────── */
+#detail-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+#detail-backdrop.open {
+    opacity: 1;
+    pointer-events: all;
 }
 
-.btn:disabled { opacity: 0.55; cursor: not-allowed; }
-
-.btn-approve         { background: #14532d; color: #86efac; }
-.btn-approve:hover:not(:disabled) { background: #166534; }
-.btn-approve.done    { background: #166534; color: #dcfce7; }
-
-.btn-skip            { background: #7f1d1d; color: #fca5a5; }
-.btn-skip:hover:not(:disabled) { background: #991b1b; }
-.btn-skip.done       { background: #991b1b; color: #fee2e2; }
-
-.btn-view            { background: var(--border); color: var(--muted); }
-.btn-view:hover      { background: #3a3d4a; color: var(--text); }
-
-.btn-download        { background: #1e3a5f; color: #93c5fd; }
-.btn-download:hover  { background: #1e40af; }
-
-.btn-tailoring       { background: #1e1b4b; color: #a5b4fc; cursor: default; }
-.btn-failed          { background: #450a0a; color: #fca5a5; cursor: default; }
-.btn-retry           { background: #431407; color: #fed7aa; }
-.btn-retry:hover:not(:disabled) { background: #7c2d12; }
-.btn-apply           { background: #1e3a5f; color: #7dd3fc; }
-.btn-apply:hover:not(:disabled) { background: #1d4ed8; }
-.btn-applying        { background: #1e1b4b; color: #a5b4fc; cursor: default; }
-.btn-applied         { background: #14532d; color: #86efac; cursor: default; }
-.btn-manual          { background: #431407; color: #fdba74; cursor: default; }
-.btn-linkedin        { background: #1e3a5f; color: #93c5fd; }
-.btn-linkedin:hover  { background: #1d4ed8; }
-
-/* ── Modal ───────────────────────────────────────────────────────── */
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.72);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  padding: 20px;
-  backdrop-filter: blur(2px);
+#detail-panel {
+    position: fixed;
+    top: 64px; right: 0; bottom: 0;
+    width: 480px;
+    background: var(--bg-card);
+    border-left: 1px solid var(--border);
+    z-index: 201;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#detail-panel.open {
+    transform: translateX(0);
 }
 
-.overlay.hidden { display: none; }
+.detail-panel-header {
+    padding: 12px 16px 0;
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
+.detail-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+}
+.detail-close-btn:hover { color: var(--text-primary); }
 
-.modal {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  width: 100%;
-  max-width: 660px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
+#detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 22px 22px;
 }
 
-.modal-head {
-  padding: 18px 22px 14px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+.detail-header-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 4px;
 }
-
-.modal-head-title { font-size: 15px; font-weight: 600; }
-.modal-head-sub   { font-size: 12px; color: var(--muted); margin-top: 3px; }
-
-.modal-close {
-  background: none;
-  border: none;
-  color: var(--muted);
-  font-size: 22px;
-  cursor: pointer;
-  line-height: 1;
-  flex-shrink: 0;
-  padding: 0 2px;
-}
-
-.modal-close:hover { color: var(--text); }
-
-.modal-body {
-  padding: 18px 22px;
-  overflow-y: auto;
-  flex: 1;
-}
+.detail-title-block { flex: 1; min-width: 0; }
+.detail-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+.detail-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.detail-badges { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .section-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--dim);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 8px;
-  margin-top: 18px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 18px 0 8px;
 }
-
-.section-label:first-child { margin-top: 0; }
-
-.modal-text {
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--text);
-  white-space: pre-wrap;
+.detail-text {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-primary);
+    white-space: pre-wrap;
 }
 
 /* ── Toasts ──────────────────────────────────────────────────────── */
-.toast-wrap {
-  position: fixed;
-  bottom: 22px;
-  right: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  z-index: 200;
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-
 .toast {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 11px 15px;
-  font-size: 13px;
-  min-width: 220px;
-  max-width: 340px;
-  animation: slideIn 0.18s ease;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #fff;
+    min-width: 280px;
+    max-width: 400px;
+    animation: slideIn 0.2s ease;
 }
-
-.toast.ok  { border-color: var(--green);  color: #86efac; }
-.toast.err { border-color: var(--red);    color: #fca5a5; }
+.toast--success { background: #14532d; border: 1px solid var(--success); }
+.toast--error   { background: #450a0a; border: 1px solid var(--danger); }
+.toast--info    { background: #1e1b4b; border: 1px solid var(--accent); }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateX(16px); }
-  to   { opacity: 1; transform: translateX(0); }
+    from { transform: translateX(40px); opacity: 0; }
+    to   { transform: translateX(0);   opacity: 1; }
 }
-
-/* ── Spinner ─────────────────────────────────────────────────────── */
-.spin {
-  width: 11px; height: 11px;
-  border: 2px solid rgba(255,255,255,0.25);
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: rot 0.55s linear infinite;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-@keyframes rot { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 
-<!-- ── Sidebar ──────────────────────────────────────────────────────── -->
-<aside class="sidebar">
-  <div class="logo">Job Auto</div>
+<!-- ── Top bar ──────────────────────────────────────────────────────── -->
+<div id="top-bar">
+  <div class="top-bar-left">
+    <div id="logo">Job Auto</div>
+    <div id="stat-pills"></div>
+  </div>
 
-  <div class="stats-grid">
-    <div class="stat-box">
-      <div class="stat-value" id="s-total">—</div>
-      <div class="stat-label">Total</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-value" id="s-above">—</div>
-      <div class="stat-label">Score 6+</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-value" id="s-approved">—</div>
-      <div class="stat-label">Approved</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-value" id="s-applied">—</div>
-      <div class="stat-label">Applied</div>
+  <div class="top-bar-center">
+    <div id="search-wrapper">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Search by title, company, or keyword..." autocomplete="off">
+      <button id="search-clear" onclick="clearSearch()">×</button>
     </div>
   </div>
 
-  <div class="filter-label">Filter</div>
-  <button class="filter-btn" data-status="" onclick="setFilter(this)">
-    All <span class="filter-count" id="fc-all">—</span>
-  </button>
-  <button class="filter-btn active" data-status="new" onclick="setFilter(this)">
-    New <span class="filter-count" id="fc-new">—</span>
-  </button>
-  <button class="filter-btn" data-status="approved" onclick="setFilter(this)">
-    Approved <span class="filter-count" id="fc-approved">—</span>
-  </button>
-  <button class="filter-btn" data-status="applied" onclick="setFilter(this)">
-    Applied <span class="filter-count" id="fc-applied">—</span>
-  </button>
-  <button class="filter-btn" data-status="skipped" onclick="setFilter(this)">
-    Skipped <span class="filter-count" id="fc-skipped">—</span>
-  </button>
-  <button class="filter-btn" data-status="manual" onclick="setFilter(this)">
-    Manual <span class="filter-count" id="fc-manual">—</span>
-  </button>
-
-  <div class="sidebar-footer">
-    <button class="pipeline-btn" id="pipeline-btn" onclick="runPipeline()">
-      ▶ Run Pipeline
-    </button>
-    <div class="pipeline-info" id="pipeline-info"></div>
-    <button class="pipeline-btn" id="apply-all-btn" onclick="applyAll()"
-            style="margin-top:8px;background:#1e3a5f;">
-      ⚡ Apply All
-    </button>
-    <div class="pipeline-info" id="apply-all-info"></div>
-  </div>
-</aside>
-
-<!-- ── Main ─────────────────────────────────────────────────────────── -->
-<main class="main">
-  <div class="topbar">
-    <div class="topbar-label" id="topbar-label">Showing new jobs</div>
-  </div>
-  <div class="jobs-grid" id="jobs-grid">
-    <div class="empty-state">Loading…</div>
-  </div>
-</main>
-
-<!-- ── Modal ────────────────────────────────────────────────────────── -->
-<div class="overlay hidden" id="overlay">
-  <div class="modal" id="modal-box">
-    <div class="modal-head">
-      <div>
-        <div class="modal-head-title" id="m-title"></div>
-        <div class="modal-head-sub"   id="m-sub"></div>
-      </div>
-      <button class="modal-close" id="modal-close-btn">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="section-label">Fit Reason</div>
-      <div class="modal-text" id="m-reason"></div>
-      <div class="section-label">Job Description</div>
-      <div class="modal-text" id="m-desc"></div>
-    </div>
+  <div class="top-bar-right">
+    <button id="btn-run-pipeline" onclick="runPipelineClick()">▷ Run Pipeline</button>
+    <button id="btn-apply-all" onclick="applyAllClick()" disabled>✓ Apply All (0)</button>
   </div>
 </div>
 
+<!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+<aside id="sidebar">
+  <div class="sidebar-label">Filter</div>
+  <div class="filter-row active" data-status="" onclick="setFilter('')">
+    <span class="filter-name">All Jobs</span><span class="filter-count">—</span>
+  </div>
+  <div class="filter-row" data-status="new" onclick="setFilter('new')">
+    <span class="filter-name">New</span><span class="filter-count">—</span>
+  </div>
+  <div class="filter-row" data-status="approved" onclick="setFilter('approved')">
+    <span class="filter-name">Approved</span><span class="filter-count">—</span>
+  </div>
+  <div class="filter-row" data-status="applied" onclick="setFilter('applied')">
+    <span class="filter-name">Applied</span><span class="filter-count">—</span>
+  </div>
+  <div class="filter-row" data-status="manual" onclick="setFilter('manual')">
+    <span class="filter-name">Manual</span><span class="filter-count">—</span>
+  </div>
+  <div class="filter-row" data-status="skipped" onclick="setFilter('skipped')">
+    <span class="filter-name">Skipped</span><span class="filter-count">—</span>
+  </div>
+  <div class="filter-row" data-status="closed" onclick="setFilter('closed')">
+    <span class="filter-name">Closed</span><span class="filter-count">—</span>
+  </div>
+
+  <div class="sidebar-label">Sort By</div>
+  <select id="sort-select" onchange="setSort(this.value)">
+    <option value="score_desc">Score (High → Low)</option>
+    <option value="score_asc">Score (Low → High)</option>
+    <option value="date_desc">Date (Newest First)</option>
+    <option value="date_asc">Date (Oldest First)</option>
+    <option value="company_asc">Company (A → Z)</option>
+  </select>
+
+  <label class="toggle-row">
+    <input type="checkbox" id="toggle-easy-apply" onchange="setEasyApplyFilter(this.checked)">
+    <span>Easy Apply only</span>
+  </label>
+  <label class="toggle-row">
+    <input type="checkbox" id="toggle-hide-expired" onchange="setHideExpired(this.checked)">
+    <span>Hide expired</span>
+  </label>
+
+  <div class="sidebar-label">Maintenance</div>
+  <button class="maint-btn" id="btn-validate" onclick="triggerValidation()">Validate Jobs</button>
+  <button class="maint-btn maint-btn--danger" id="btn-purge" onclick="triggerPurge()">
+    Purge Expired (<span id="purge-count">0</span>)
+  </button>
+  <button class="maint-btn" id="btn-restore" onclick="triggerRestoreAll()">
+    Restore Skipped (<span id="restore-count">0</span>)
+  </button>
+
+  <div class="nav-section">
+    <a class="nav-link nav-link--active" href="/">📋 Jobs</a>
+    <a class="nav-link" href="/resume">📝 Resume</a>
+  </div>
+</aside>
+
+<!-- ── Job grid ─────────────────────────────────────────────────────── -->
+<main id="grid-area">
+  <div id="grid-header">
+    <span id="grid-header-text">Showing 0 jobs</span>
+  </div>
+  <div id="job-grid">
+    <div class="empty-state">
+      <div class="empty-icon">⏳</div>
+      <div class="empty-title">Loading…</div>
+    </div>
+  </div>
+</main>
+
+<!-- ── Detail panel ─────────────────────────────────────────────────── -->
+<div id="detail-backdrop"></div>
+<div id="detail-panel">
+  <div class="detail-panel-header">
+    <button class="detail-close-btn" onclick="closeDetail()">×</button>
+  </div>
+  <div id="detail-body"></div>
+</div>
+
 <!-- ── Toasts ───────────────────────────────────────────────────────── -->
-<div class="toast-wrap" id="toasts"></div>
+<div id="toast-container"></div>
 
 <script>
 /* ── State ───────────────────────────────────────────────────────── */
-let currentFilter = 'new';
-let jobs = [];
+const state = {
+    status:        '',
+    sort:          'score_desc',
+    search:        '',
+    easyApplyOnly: false,
+    hideExpired:   false,
+    selectedJobId: null,
+};
 
-/* ── Boot ────────────────────────────────────────────────────────── */
-async function init() {
-  await Promise.all([loadStats(), loadJobs('new')]);
-  checkPipelineStatus();
-}
+let allJobs = [];
+const pollingResumeJobs = new Set();
+const validatingJobs = new Set();
 
-/* ── Stats ───────────────────────────────────────────────────────── */
-async function loadStats() {
-  try {
-    const s = await api('/api/stats');
-    document.getElementById('s-total').textContent    = s.total;
-    document.getElementById('s-above').textContent    = s.above_threshold;
-    document.getElementById('s-approved').textContent = s.approved;
-    document.getElementById('s-applied').textContent  = s.applied;
-    document.getElementById('fc-all').textContent      = s.total;
-    document.getElementById('fc-new').textContent      = s.new;
-    document.getElementById('fc-approved').textContent = s.approved;
-    document.getElementById('fc-applied').textContent  = s.applied;
-    document.getElementById('fc-skipped').textContent  = s.skipped;
-    document.getElementById('fc-manual').textContent   = s.manual || 0;
-  } catch { toast('Failed to load stats', 'err'); }
-}
-
-/* ── Jobs ────────────────────────────────────────────────────────── */
-async function loadJobs(status) {
-  const url = status ? `/api/jobs?status=${status}` : '/api/jobs';
-  try {
-    jobs = await api(url);
-    renderGrid();
-  } catch { toast('Failed to load jobs', 'err'); }
-}
-
-function renderGrid() {
-  const grid = document.getElementById('jobs-grid');
-  if (!jobs.length) {
-    grid.innerHTML = '<div class="empty-state">No jobs here.</div>';
-    return;
-  }
-  grid.innerHTML = jobs.map(renderCard).join('');
-}
-
-function renderCard(j) {
-  const score = j.fit_score || 0;
-  const badge = score >= 9 ? 's-green' : score >= 7 ? 's-indigo' : 's-yellow';
-  const reason = esc(j.fit_reason || '').slice(0, 150);
-  const date   = (j.created_at || '').slice(0, 10);
-  const ea     = j.is_easy_apply ? '<span class="ea-badge">Easy Apply</span>' : '';
-  return `
-  <div class="job-card" id="card-${j.id}" onclick="openModal(${j.id})">
-    <div class="card-top">
-      <span class="score-badge ${badge}">${score}/10</span>
-      <div class="card-title-wrap">
-        <div class="card-title">${esc(j.title)}</div>
-        <div class="card-company">${esc(j.company)}</div>
-      </div>
-    </div>
-    <div class="card-meta">
-      <span class="card-location">${esc(j.location || '')}</span>${ea}
-    </div>
-    <div class="card-reason">${reason}${reason.length >= 150 ? '…' : ''}</div>
-    <div class="card-date">${date}</div>
-    <div class="card-actions" id="act-${j.id}">${renderActions(j)}</div>
-  </div>`;
-}
-
-function renderActions(j) {
-  let approve = '', skip = '';
-
-  if (j.status === 'approved') {
-    approve = `<button class="btn btn-approve done" disabled>✓ Approved</button>`;
-  } else if (j.status !== 'skipped' && j.status !== 'applied') {
-    approve = `<button class="btn btn-approve" onclick="approveJob(event,${j.id})">Approve</button>`;
-  }
-
-  if (j.status === 'skipped') {
-    skip = `<button class="btn btn-skip done" disabled>✗ Skipped</button>`;
-  } else if (j.status !== 'applied') {
-    skip = `<button class="btn btn-skip" onclick="skipJob(event,${j.id})">Skip</button>`;
-  }
-
-  const view = `<a class="btn btn-view" href="${esc(j.url)}" target="_blank" onclick="event.stopPropagation()">View ↗</a>`;
-
-  let resume = '';
-  if (j.resume_path === 'failed') {
-    resume = `<span class="btn btn-failed">✗ Failed</span>`
-           + `<button class="btn btn-retry" onclick="retryTailor(event,${j.id})">Retry</button>`;
-  } else if (j.resume_path) {
-    resume = `<a class="btn btn-download" href="/api/jobs/${j.id}/resume" target="_blank" onclick="event.stopPropagation()">⬇ Resume</a>`;
-  } else if (j.status === 'approved') {
-    resume = `<span class="btn btn-tailoring"><span class="spin"></span> Tailoring…</span>`;
-  }
-
-  let applyBtn = '';
-  if (j.status === 'applied') {
-    applyBtn = `<span class="btn btn-applied">✓ Applied</span>`;
-  } else if (j.status === 'manual') {
-    applyBtn = `<span class="btn btn-manual">⚠ Manual</span>`
-             + `<a class="btn btn-linkedin" href="${esc(j.url)}" target="_blank" onclick="event.stopPropagation()">Open LinkedIn ↗</a>`;
-  } else if (j.status === 'approved' && j.resume_path && j.resume_path !== 'failed') {
-    applyBtn = `<button class="btn btn-apply" onclick="applyJob(event,${j.id})">Apply</button>`;
-  }
-
-  return approve + skip + view + resume + applyBtn;
-}
-
-function refreshCard(j) {
-  const el = document.getElementById(`act-${j.id}`);
-  if (el) el.innerHTML = renderActions(j);
-  const idx = jobs.findIndex(x => x.id === j.id);
-  if (idx >= 0) jobs[idx] = j;
-}
-
-/* ── Actions ─────────────────────────────────────────────────────── */
-async function approveJob(e, id) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span>';
-  try {
-    const j = await api(`/api/jobs/${id}/approve`, 'POST');
-    refreshCard(j);
-    loadStats();
-    toast('Approved — tailoring in background', 'ok');
-    pollResume(id);
-  } catch(err) {
-    toast(`Approve failed: ${err.message}`, 'err');
-    btn.disabled = false;
-    btn.innerHTML = 'Approve';
-  }
-}
-
-async function skipJob(e, id) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span>';
-  try {
-    const j = await api(`/api/jobs/${id}/skip`, 'POST');
-    refreshCard(j);
-    loadStats();
-    toast('Job skipped', 'ok');
-  } catch(err) {
-    toast(`Skip failed: ${err.message}`, 'err');
-    btn.disabled = false;
-    btn.innerHTML = 'Skip';
-  }
-}
-
-async function pollResume(id, tries = 0) {
-  if (tries >= 12) {
-    // 60s timeout — mark as failed locally and stop
-    const j = jobs.find(x => x.id === id);
-    if (j) { j.resume_path = 'failed'; refreshCard(j); }
-    toast('Tailoring timed out — click Retry', 'err');
-    return;
-  }
-  await sleep(5000);
-  try {
-    const j = await api(`/api/jobs/${id}`);
-    if (j.resume_path === 'failed') {
-      refreshCard(j);
-      toast('Tailoring failed — click Retry', 'err');
-      return;
+/* ── API helper ──────────────────────────────────────────────────── */
+async function api(url, options = {}) {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: response.statusText }));
+        throw new Error(err.detail || `HTTP ${response.status}`);
     }
-    if (j.resume_path) {
-      refreshCard(j);
-      toast('Resume ready — click Download!', 'ok');
-      return;
-    }
-  } catch {}
-  pollResume(id, tries + 1);
-}
-
-async function retryTailor(e, id) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span>';
-  try {
-    const j = await api(`/api/jobs/${id}/approve`, 'POST');
-    refreshCard(j);
-    toast('Retrying tailoring…', 'ok');
-    pollResume(id);
-  } catch(err) {
-    toast(`Retry failed: ${err.message}`, 'err');
-    btn.disabled = false;
-    btn.innerHTML = 'Retry';
-  }
-}
-
-/* ── Apply ───────────────────────────────────────────────────────── */
-async function applyJob(e, id) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span>';
-  try {
-    await api(`/api/jobs/${id}/apply`, 'POST');
-    // Optimistically show applying state and poll until status changes
-    const j = jobs.find(x => x.id === id);
-    if (j) {
-      const actEl = document.getElementById(`act-${id}`);
-      if (actEl) {
-        actEl.innerHTML = actEl.innerHTML.replace(
-          /<button[^>]*btn-apply[^>]*>.*?<\/button>/,
-          '<span class="btn btn-applying"><span class="spin"></span> Applying…</span>'
-        );
-      }
-    }
-    toast('Applying in background — browser will open', 'ok');
-    pollApplyStatus(id);
-  } catch(err) {
-    toast(`Apply failed: ${err.message}`, 'err');
-    btn.disabled = false;
-    btn.innerHTML = 'Apply';
-  }
-}
-
-async function pollApplyStatus(id, tries = 0) {
-  if (tries > 60) return; // ~5 min timeout
-  await sleep(5000);
-  try {
-    const j = await api(`/api/jobs/${id}`);
-    if (j.status === 'applied' || j.status === 'failed' || j.status === 'closed' || j.status === 'manual') {
-      refreshCard(j);
-      loadStats();
-      if (j.status === 'applied') toast(`✓ Applied: ${j.title}`, 'ok');
-      else if (j.status === 'manual') toast(`Manual apply required: ${j.title}`, 'ok');
-      else toast(`Apply ${j.status}: ${j.title}`, 'err');
-      return;
-    }
-  } catch {}
-  pollApplyStatus(id, tries + 1);
-}
-
-async function applyAll() {
-  const btn = document.getElementById('apply-all-btn');
-  const info = document.getElementById('apply-all-info');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> Applying…';
-  try {
-    const r = await api('/api/apply-all', 'POST');
-    if (r.status === 'no_jobs') {
-      toast('No approved jobs with resumes ready', 'err');
-      btn.disabled = false;
-      btn.innerHTML = '⚡ Apply All';
-      return;
-    }
-    info.textContent = `${r.count} job(s) queued`;
-    toast(`Applying to ${r.count} job(s) — browser will open`, 'ok');
-    // Re-enable after a delay (batch runs in background)
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.innerHTML = '⚡ Apply All';
-      loadJobs(currentFilter);
-      loadStats();
-    }, 10000);
-  } catch(err) {
-    toast(`Apply All failed: ${err.message}`, 'err');
-    btn.disabled = false;
-    btn.innerHTML = '⚡ Apply All';
-  }
-}
-
-/* ── Filter ──────────────────────────────────────────────────────── */
-function setFilter(btn) {
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentFilter = btn.dataset.status;
-  const labels = {'':'All jobs','new':'New jobs','approved':'Approved jobs','applied':'Applied jobs','skipped':'Skipped jobs','manual':'Manual apply jobs'};
-  document.getElementById('topbar-label').textContent = `Showing ${labels[currentFilter] || currentFilter}`;
-  loadJobs(currentFilter);
-}
-
-/* ── Pipeline ────────────────────────────────────────────────────── */
-async function runPipeline() {
-  const btn = document.getElementById('pipeline-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> Running…';
-  try {
-    const r = await api('/api/pipeline/run', 'POST');
-    if (r.status === 'already_running') {
-      toast('Pipeline already running', 'err');
-    } else {
-      toast('Pipeline started', 'ok');
-      pollPipeline(true);
-    }
-  } catch {
-    toast('Failed to start pipeline', 'err');
-    btn.disabled = false;
-    btn.innerHTML = '▶ Run Pipeline';
-  }
-}
-
-async function checkPipelineStatus() { pollPipeline(false); }
-
-async function pollPipeline(active) {
-  try {
-    const s = await api('/api/pipeline/status');
-    const btn  = document.getElementById('pipeline-btn');
-    const info = document.getElementById('pipeline-info');
-    if (s.running) {
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spin"></span> Running…';
-      info.textContent = 'Pipeline running…';
-      setTimeout(() => pollPipeline(true), 5000);
-    } else {
-      btn.disabled = false;
-      btn.innerHTML = '▶ Run Pipeline';
-      if (s.last_run) {
-        info.textContent = `${s.last_run_new_jobs} new · ${s.last_run_scored} scored`;
-        if (active) {
-          loadJobs(currentFilter);
-          loadStats();
-          toast(`Done — ${s.last_run_new_jobs} new, ${s.last_run_scored} scored`, 'ok');
-        }
-      } else {
-        info.textContent = 'Never run';
-      }
-    }
-  } catch {}
-}
-
-/* ── Modal ───────────────────────────────────────────────────────── */
-function openModal(id) {
-  const j = jobs.find(x => x.id === id);
-  if (!j) return;
-  document.getElementById('m-title').textContent  = j.title;
-  document.getElementById('m-sub').textContent    = `${j.company} · ${j.location || ''} · Score ${j.fit_score}/10`;
-  document.getElementById('m-reason').textContent = j.fit_reason || '—';
-  document.getElementById('m-desc').textContent   = j.description || '—';
-  document.getElementById('overlay').classList.remove('hidden');
-}
-
-function closeModal() {
-  document.getElementById('overlay').classList.add('hidden');
-}
-
-document.getElementById('overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('overlay')) closeModal();
-});
-document.getElementById('modal-close-btn').addEventListener('click', closeModal);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-
-/* ── Toast ───────────────────────────────────────────────────────── */
-function toast(msg, type = '') {
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.textContent = msg;
-  document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+    return response.json();
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
-async function api(url, method = 'GET') {
-  const r = await fetch(url, { method });
-  if (!r.ok) {
-    const txt = await r.text().catch(() => r.statusText);
-    throw new Error(txt);
-  }
-  return r.json();
-}
-
 function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function timeAgo(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr.replace(' ', 'T'));
+    const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (secs < 60) return 'Just now';
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+    if (secs < 604800) return `${Math.floor(secs / 86400)}d ago`;
+    return `${Math.floor(secs / 604800)}w ago`;
+}
 
-init();
+function scoreBadgeColor(score) {
+    if (score >= 9) return { bg: 'var(--success)', color: '#fff' };
+    if (score >= 7) return { bg: 'var(--accent)',  color: '#fff' };
+    if (score >= 6) return { bg: 'var(--warning)', color: '#111' };
+    if (score >= 4) return { bg: 'var(--orange)',  color: '#fff' };
+    return               { bg: 'var(--danger)',  color: '#fff' };
+}
+
+function showToast(message, type = 'info', duration) {
+    if (duration == null) duration = type === 'error' ? 5000 : 3000;
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+/* ── Fetch: jobs + stats ─────────────────────────────────────────── */
+async function fetchJobs() {
+    const params = new URLSearchParams();
+    if (state.status)        params.set('status', state.status);
+    if (state.sort)          params.set('sort', state.sort);
+    if (state.search)        params.set('search', state.search);
+    if (state.easyApplyOnly) params.set('easy_apply', 'true');
+
+    try {
+        const jobs = await api('/api/jobs?' + params.toString());
+        allJobs = jobs;
+
+        const rendered = state.hideExpired
+            ? jobs.filter(j => !j.is_likely_expired)
+            : jobs;
+
+        renderGrid(rendered);
+        updateApplyAllCount();
+        startTailoringPollers();
+    } catch (e) {
+        showToast('Failed to load jobs: ' + e.message, 'error');
+    }
+}
+
+async function fetchStats() {
+    try {
+        const stats = await api('/api/stats');
+        renderStats(stats);
+        renderSidebarCounts(stats);
+        renderMaintenanceCounts(stats);
+    } catch (e) {
+        console.error('Stats fetch failed:', e);
+    }
+}
+
+/* ── Top bar rendering ───────────────────────────────────────────── */
+function renderStats(stats) {
+    const pills = [
+        { label: 'Total',    value: stats.total,    status: '',         cls: 'neutral' },
+        { label: 'New',      value: stats.new,      status: 'new',      cls: 'accent' },
+        { label: 'Approved', value: stats.approved, status: 'approved', cls: 'success' },
+        { label: 'Applied',  value: stats.applied,  status: 'applied',  cls: 'info' },
+    ];
+    let html = pills.map(p =>
+        `<span class="stat-pill stat-pill--${p.cls}" onclick="setFilter('${p.status}')">${p.label}: ${p.value}</span>`
+    ).join('');
+
+    if (stats.likely_expired > 0) {
+        html += `<span class="stat-pill stat-pill--danger" onclick="setFilter('new')">⚠ Likely Expired: ${stats.likely_expired}</span>`;
+    }
+
+    document.getElementById('stat-pills').innerHTML = html;
+}
+
+function renderSidebarCounts(stats) {
+    const map = {
+        '':         stats.total,
+        'new':      stats.new,
+        'approved': stats.approved,
+        'applied':  stats.applied,
+        'manual':   stats.manual,
+        'skipped':  stats.skipped,
+        'closed':   stats.closed,
+    };
+    document.querySelectorAll('.filter-row').forEach(row => {
+        const status = row.dataset.status;
+        const countEl = row.querySelector('.filter-count');
+        if (countEl && status in map) countEl.textContent = map[status];
+    });
+}
+
+function renderMaintenanceCounts(stats) {
+    const purgeCount = (stats.closed || 0) + (stats.failed || 0);
+    const restoreCount = stats.skipped || 0;
+    document.getElementById('purge-count').textContent = purgeCount;
+    document.getElementById('restore-count').textContent = restoreCount;
+    document.getElementById('btn-purge').style.display = purgeCount === 0 ? 'none' : 'block';
+    document.getElementById('btn-restore').style.display = restoreCount === 0 ? 'none' : 'block';
+}
+
+/* ── Filters, sort, search, toggles ──────────────────────────────── */
+function setFilter(status) {
+    state.status = status;
+    document.querySelectorAll('.filter-row').forEach(row => {
+        row.classList.toggle('active', row.dataset.status === status);
+    });
+    fetchJobs();
+}
+
+function setSort(value) {
+    state.sort = value;
+    fetchJobs();
+}
+
+function setEasyApplyFilter(checked) {
+    state.easyApplyOnly = checked;
+    fetchJobs();
+}
+
+function setHideExpired(checked) {
+    state.hideExpired = checked;
+    const rendered = checked ? allJobs.filter(j => !j.is_likely_expired) : allJobs;
+    renderGrid(rendered);
+}
+
+const searchInputEl = document.getElementById('search-input');
+const searchClearEl = document.getElementById('search-clear');
+let searchDebounceTimer = null;
+
+searchInputEl.addEventListener('input', (e) => {
+    searchClearEl.style.display = e.target.value.length ? 'flex' : 'none';
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+        state.search = e.target.value.trim();
+        fetchJobs();
+    }, 300);
+});
+
+function clearSearch() {
+    searchInputEl.value = '';
+    searchClearEl.style.display = 'none';
+    state.search = '';
+    fetchJobs();
+}
+
+/* ── Grid rendering ──────────────────────────────────────────────── */
+function renderGrid(jobs) {
+    const grid = document.getElementById('job-grid');
+    document.getElementById('grid-header-text').textContent =
+        `Showing ${jobs.length} job${jobs.length === 1 ? '' : 's'}`;
+
+    if (jobs.length === 0) {
+        grid.innerHTML = buildEmptyState();
+        return;
+    }
+    grid.innerHTML = jobs.map(buildCardHTML).join('');
+}
+
+function buildEmptyState() {
+    const messages = {
+        '':         'No jobs in the database. Run the pipeline to scrape some.',
+        'new':      'No new jobs. Run the pipeline to scrape more.',
+        'approved': 'No approved jobs. Approve some from the New tab.',
+        'applied':  'No applications yet. Apply to approved jobs using Apply All.',
+        'skipped':  'No skipped jobs. Restore skipped jobs using Restore Skipped.',
+        'manual':   'No manual jobs found.',
+        'closed':   'No expired jobs. Run Validate to detect them.',
+    };
+    const message = state.search
+        ? `No jobs match "${esc(state.search)}". Try a different keyword.`
+        : (messages[state.status] || 'No jobs found.');
+
+    return `
+    <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div class="empty-title">No jobs found</div>
+        <div class="empty-message">${message}</div>
+    </div>`;
+}
+
+function buildTypeBadge(job) {
+    if (job.is_easy_apply && job.status !== 'manual') {
+        return '<span class="badge badge--easy">Easy Apply</span>';
+    }
+    if (job.status === 'manual' || !job.is_easy_apply) {
+        return '<span class="badge badge--manual">Manual</span>';
+    }
+    return '';
+}
+
+function buildCardHTML(job) {
+    const sc = scoreBadgeColor(job.fit_score || 0);
+    const scoreLabel = job.fit_score != null ? `${job.fit_score}/10` : '—';
+    const expiryIcon = job.is_likely_expired
+        ? `<span class="expiry-icon" title="Scraped ${timeAgo(job.created_at)} — may be expired. Click Validate to check.">⚠</span>`
+        : '';
+    const closedClass = job.status === 'closed' ? ' job-card--closed' : '';
+    const manualClass = job.status === 'manual' ? ' job-card--manual' : '';
+
+    return `
+    <div class="job-card${closedClass}${manualClass}" id="job-card-${job.id}" onclick="openDetail(${job.id})">
+        <div class="card-header">
+            <span class="score-badge" style="background:${sc.bg};color:${sc.color}">${scoreLabel}</span>
+            <div class="card-title-block">
+                <div class="card-title">${esc(job.title)}</div>
+                <div class="card-company">${esc(job.company)} · ${esc(job.location || '')}</div>
+            </div>
+            ${expiryIcon}
+        </div>
+        <div class="card-badges">${buildTypeBadge(job)}</div>
+        <div class="fit-reason">${esc(job.fit_reason || '')}</div>
+        <div class="card-meta-time">Scraped ${timeAgo(job.created_at)}</div>
+        <div class="card-divider"></div>
+        <div class="card-actions" id="card-actions-${job.id}">${buildActionsHTML(job)}</div>
+    </div>`;
+}
+
+function buildActionsHTML(job) {
+    const viewBtn = `<button class="btn btn-view" data-url="${esc(job.url)}" onclick="viewJob(event)">↗ View</button>`;
+
+    switch (job.status) {
+        case 'new':
+            return `
+                <button class="btn btn-approve" onclick="approveJob(event, ${job.id})">Approve ✓</button>
+                <button class="btn btn-skip" onclick="skipJob(event, ${job.id})">Skip ✗</button>
+                <button class="btn btn-validate" onclick="validateJobCard(event, ${job.id})">Validate</button>
+                ${viewBtn}`;
+
+        case 'approved': {
+            const ready = job.resume_path && job.resume_path !== 'failed' && job.resume_path !== '';
+            if (ready) {
+                return `<button class="btn btn-download" onclick="downloadResume(event, ${job.id})">⬇ Download Resume</button>${viewBtn}`;
+            }
+            if (job.resume_path === 'failed') {
+                return `<span class="status-text status-text--danger">Tailoring failed — check logs</span>${viewBtn}`;
+            }
+            return `<button class="btn btn-tailoring" disabled><span class="spin-icon">⟳</span> Tailoring...</button>${viewBtn}`;
+        }
+
+        case 'applied':
+            return `<span class="status-text status-text--success">✓ Applied ${timeAgo(job.applied_at)}</span>${viewBtn}`;
+
+        case 'skipped':
+            return `<button class="btn btn-restore" onclick="restoreJob(event, ${job.id})">↩ Restore</button>${viewBtn}`;
+
+        case 'manual':
+            return `
+                <button class="btn btn-manual" data-url="${esc(job.url)}" onclick="viewJob(event)">Apply Manually ↗</button>
+                ${viewBtn}`;
+
+        case 'closed':
+            return `<span class="status-text status-text--muted">Closed</span>${viewBtn}`;
+
+        default:
+            return viewBtn;
+    }
+}
+
+function viewJob(e) {
+    e.stopPropagation();
+    const url = e.currentTarget.dataset.url;
+    if (url) window.open(url, '_blank');
+}
+
+/* ── In-place job update (used by approve / validate / poller) ─────── */
+function applyJobUpdate(job) {
+    const idx = allJobs.findIndex(j => j.id === job.id);
+    if (idx >= 0) allJobs[idx] = job; else allJobs.push(job);
+
+    const cardEl = document.getElementById(`job-card-${job.id}`);
+    if (cardEl) cardEl.outerHTML = buildCardHTML(job);
+
+    if (state.selectedJobId === job.id) renderDetailPanel(job);
+
+    updateApplyAllCount();
+}
+
+/* ── Approve → tailoring poll ────────────────────────────────────── */
+async function approveJob(e, id) {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin-icon">⟳</span> Approving...';
+    try {
+        const job = await api(`/api/jobs/${id}/approve`, { method: 'POST' });
+        applyJobUpdate(job);
+        showToast('Approved — tailoring in background', 'success');
+        fetchStats();
+        startPollingResume(id);
+    } catch (err) {
+        showToast('Approve failed: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Approve ✓';
+    }
+}
+
+function startPollingResume(id) {
+    if (pollingResumeJobs.has(id)) return;
+    pollingResumeJobs.add(id);
+    pollResume(id, 0);
+}
+
+function pollResume(id, elapsed) {
+    if (elapsed >= 90) {
+        pollingResumeJobs.delete(id);
+        const idx = allJobs.findIndex(j => j.id === id);
+        if (idx >= 0) {
+            allJobs[idx] = { ...allJobs[idx], resume_path: 'failed' };
+            applyJobUpdate(allJobs[idx]);
+        }
+        return;
+    }
+    setTimeout(async () => {
+        try {
+            const job = await api(`/api/jobs/${id}`);
+            const ready = job.resume_path && job.resume_path !== 'failed' && job.resume_path !== '' && job.status === 'approved';
+            if (ready) {
+                pollingResumeJobs.delete(id);
+                applyJobUpdate(job);
+                showToast('Resume ready — click Download!', 'success');
+                return;
+            }
+            if (job.resume_path === 'failed') {
+                pollingResumeJobs.delete(id);
+                applyJobUpdate(job);
+                showToast('Tailoring failed — check logs', 'error');
+                return;
+            }
+        } catch (e) { /* transient — keep polling */ }
+        pollResume(id, elapsed + 3);
+    }, 3000);
+}
+
+function startTailoringPollers() {
+    allJobs.forEach(job => {
+        if (job.status === 'approved' &&
+            (!job.resume_path || job.resume_path === '' || job.resume_path === 'failed')) {
+            startPollingResume(job.id);
+        }
+    });
+}
+
+function downloadResume(e, id) {
+    e.stopPropagation();
+    window.open(`/api/jobs/${id}/resume`, '_blank');
+}
+
+/* ── Skip / restore ──────────────────────────────────────────────── */
+async function skipJob(e, id) {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+        await api(`/api/jobs/${id}/skip`, { method: 'POST' });
+        showToast('Job skipped', 'success');
+        if (state.selectedJobId === id) closeDetail();
+        fetchJobs();
+        fetchStats();
+    } catch (err) {
+        showToast('Skip failed: ' + err.message, 'error');
+        btn.disabled = false;
+    }
+}
+
+async function restoreJob(e, id) {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+        await api(`/api/jobs/${id}/unskip`, { method: 'POST' });
+        showToast('Job restored to New', 'success');
+        if (state.selectedJobId === id) closeDetail();
+        fetchJobs();
+        fetchStats();
+    } catch (err) {
+        showToast('Restore failed: ' + err.message, 'error');
+        btn.disabled = false;
+    }
+}
+
+/* ── Per-card validate ───────────────────────────────────────────── */
+async function validateJobCard(e, id) {
+    e.stopPropagation();
+    if (validatingJobs.has(id)) return;
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin-icon">⟳</span> Validating...';
+    validatingJobs.add(id);
+    try {
+        await api(`/api/jobs/${id}/validate`, { method: 'POST' });
+    } catch (err) {
+        showToast('Validate failed: ' + err.message, 'error');
+        validatingJobs.delete(id);
+        btn.disabled = false;
+        btn.innerHTML = 'Validate';
+        return;
+    }
+    pollValidateJob(id, 0);
+}
+
+function pollValidateJob(id, elapsed) {
+    if (elapsed >= 30) {
+        validatingJobs.delete(id);
+        const job = allJobs.find(j => j.id === id);
+        if (job) applyJobUpdate(job);
+        showToast('Validation is taking longer than expected', 'info');
+        return;
+    }
+    setTimeout(async () => {
+        try {
+            const job = await api(`/api/jobs/${id}`);
+            if (job.validated_at) {
+                validatingJobs.delete(id);
+                applyJobUpdate(job);
+                showToast('Validation complete', 'success');
+                fetchStats();
+                return;
+            }
+        } catch (e) { /* transient — keep polling */ }
+        pollValidateJob(id, elapsed + 3);
+    }, 3000);
+}
+
+/* ── Top bar: Run Pipeline ───────────────────────────────────────── */
+async function runPipelineClick() {
+    const btn = document.getElementById('btn-run-pipeline');
+    try {
+        const r = await api('/api/pipeline/run', { method: 'POST' });
+        if (r.status === 'already_running') {
+            showToast('Pipeline already running', 'error');
+            return;
+        }
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spin-icon">⟳</span> Running...';
+        pollPipelineStatus(0);
+    } catch (err) {
+        showToast('Failed to start pipeline: ' + err.message, 'error');
+    }
+}
+
+function pollPipelineStatus(elapsed) {
+    if (elapsed >= 120) {
+        finishPipelinePoll(null);
+        return;
+    }
+    setTimeout(async () => {
+        try {
+            const s = await api('/api/pipeline/status');
+            if (!s.running) {
+                finishPipelinePoll(s);
+                return;
+            }
+        } catch (e) { /* transient — keep polling */ }
+        pollPipelineStatus(elapsed + 5);
+    }, 5000);
+}
+
+function finishPipelinePoll(s) {
+    const btn = document.getElementById('btn-run-pipeline');
+    btn.disabled = false;
+    btn.innerHTML = '▷ Run Pipeline';
+    if (s && s.last_run) {
+        showToast(`Pipeline done — ${s.last_run_new_jobs} new, ${s.last_run_scored} scored`, 'success');
+    } else {
+        showToast('Pipeline run finished', 'success');
+    }
+    fetchJobs();
+    fetchStats();
+}
+
+/* ── Top bar: Apply All ──────────────────────────────────────────── */
+function updateApplyAllCount() {
+    const n = allJobs.filter(j =>
+        j.status === 'approved' &&
+        j.resume_path &&
+        j.resume_path !== 'failed' &&
+        j.resume_path !== ''
+    ).length;
+    const btn = document.getElementById('btn-apply-all');
+    btn.textContent = `✓ Apply All (${n})`;
+    btn.disabled = n === 0;
+    btn.title = n === 0 ? 'No approved jobs with resumes ready' : '';
+    return n;
+}
+
+async function applyAllClick() {
+    const n = updateApplyAllCount();
+    if (n === 0) return;
+    if (!confirm(`Apply to ${n} jobs? This will open a browser and submit applications automatically. Ensure you're ready to proceed.`)) return;
+    try {
+        await api('/api/apply-all', { method: 'POST' });
+        showToast('Applying... check the browser window', 'info');
+        setTimeout(() => { fetchJobs(); fetchStats(); }, 8000);
+    } catch (err) {
+        showToast('Apply All failed: ' + err.message, 'error');
+    }
+}
+
+/* ── Maintenance ─────────────────────────────────────────────────── */
+async function triggerValidation() {
+    const btn = document.getElementById('btn-validate');
+    try {
+        await api('/api/validate', { method: 'POST' });
+        btn.disabled = true;
+        btn.textContent = 'Validating... ⟳';
+        pollValidateStatus(0);
+    } catch (err) {
+        showToast('Failed to start validation: ' + err.message, 'error');
+    }
+}
+
+function pollValidateStatus(elapsed) {
+    if (elapsed >= 60) {
+        finishValidatePoll();
+        return;
+    }
+    setTimeout(async () => {
+        try { await api('/api/validate/status'); } catch (e) { /* ignore */ }
+        pollValidateStatus(elapsed + 5);
+    }, 5000);
+}
+
+function finishValidatePoll() {
+    const btn = document.getElementById('btn-validate');
+    btn.disabled = false;
+    btn.textContent = 'Validate Jobs';
+    showToast('Validation complete — check job cards for updates', 'success');
+    fetchJobs();
+    fetchStats();
+}
+
+async function triggerPurge() {
+    const purgeCount = Number(document.getElementById('purge-count').textContent) || 0;
+    if (!confirm(`This permanently deletes all Closed/Failed jobs and their resume files. ${purgeCount} jobs will be removed. Cannot be undone.`)) return;
+    try {
+        const data = await api('/api/jobs/purge', { method: 'POST' });
+        showToast(`Purged ${data.jobs_deleted} jobs, cleaned ${data.files_cleaned} files`, 'success');
+        fetchJobs();
+        fetchStats();
+    } catch (err) {
+        showToast('Purge failed: ' + err.message, 'error');
+    }
+}
+
+async function triggerRestoreAll() {
+    try {
+        const data = await api('/api/jobs/unskip-all', { method: 'POST' });
+        showToast(`Restored ${data.restored} skipped jobs`, 'success');
+        fetchJobs();
+        fetchStats();
+    } catch (err) {
+        showToast('Restore failed: ' + err.message, 'error');
+    }
+}
+
+/* ── Detail panel ────────────────────────────────────────────────── */
+function renderDetailPanel(job) {
+    const sc = scoreBadgeColor(job.fit_score || 0);
+    const scoreLabel = job.fit_score != null ? `${job.fit_score}/10` : '—';
+    const expiredBadge = job.is_likely_expired
+        ? `<span class="badge badge--expired">⚠ May be expired</span>`
+        : '';
+
+    document.getElementById('detail-body').innerHTML = `
+        <div class="detail-header-row">
+            <span class="score-badge" style="background:${sc.bg};color:${sc.color}">${scoreLabel}</span>
+            <div class="detail-title-block">
+                <div class="detail-title">${esc(job.title)}</div>
+                <div class="detail-sub">${esc(job.company)} · ${esc(job.location || '')} · scraped ${timeAgo(job.created_at)}</div>
+                <div class="detail-badges">${buildTypeBadge(job)}${expiredBadge}</div>
+            </div>
+        </div>
+
+        <div class="section-label">Fit Reason</div>
+        <div class="detail-text">${esc(job.fit_reason || '—')}</div>
+
+        <div class="section-label">Job Description</div>
+        <div class="detail-text">${esc(job.description || '—')}</div>
+
+        <div class="section-label">Actions</div>
+        <div class="card-actions" id="detail-actions">${buildActionsHTML(job)}</div>
+    `;
+}
+
+function openDetail(jobId) {
+    if (state.selectedJobId === jobId) return;
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    state.selectedJobId = jobId;
+    renderDetailPanel(job);
+    document.getElementById('detail-panel').classList.add('open');
+    document.getElementById('detail-backdrop').classList.add('open');
+}
+
+function closeDetail() {
+    state.selectedJobId = null;
+    document.getElementById('detail-panel').classList.remove('open');
+    document.getElementById('detail-backdrop').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeDetail();
+});
+document.getElementById('detail-backdrop').addEventListener('click', closeDetail);
+
+/* ── Boot ────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+    await fetchStats();
+    await fetchJobs();
+    startTailoringPollers();
+});
 </script>
 </body>
 </html>
