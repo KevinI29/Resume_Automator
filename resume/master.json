@@ -26,7 +26,7 @@
       "institution": "Sastra Deemed University",
       "degree": "Bachelor of Bioinformatics",
       "year": "2025",
-      "gpa": "7.5 CGPA"
+      "gpa": "8 CGPA"
     },
     {
       "institution": "St Brittos Matriculation Hr Sec School",
@@ -63,7 +63,8 @@
       "VS Code",
       "Jupyter Notebook",
       "MySQL",
-      "SQLite"
+      "SQLite",
+      "CI/CD"
     ],
     "other": [
       "REST APIs",

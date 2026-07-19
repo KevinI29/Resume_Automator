@@ -501,17 +501,8 @@ async def preview_resume():
 
 
 @app.get("/resume", response_class=HTMLResponse)
-async def resume_editor():
-    """Stub for the resume editor page. Full implementation in Session 9."""
-    return HTMLResponse(
-        content=(
-            "<html><body style='font-family:sans-serif;padding:2rem;'>"
-            "<h1>Resume Editor</h1>"
-            "<p>Coming in Session 9.</p>"
-            "<p><a href='/'>← Back to Jobs</a></p>"
-            "</body></html>"
-        )
-    )
+async def resume_editor(request: Request):
+    return templates.TemplateResponse("resume.html", {"request": request})
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
