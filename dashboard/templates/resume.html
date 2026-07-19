@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resume Editor — Job Auto</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+    --bg-primary:   #0f1117;
+    --bg-card:      #1a1d27;
+    --bg-sidebar:   #0d0f1a;
+    --border:       #1e2130;
+    --border-hover: #2a2d3e;
+    --accent:       #6366f1;
+    --success:      #22c55e;
+    --warning:      #eab308;
+    --danger:       #ef4444;
+    --info:         #3b82f6;
+    --orange:       #f97316;
+    --text-primary: #f1f5f9;
+    --text-muted:   #64748b;
+    --text-dim:     #374151;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font-family: inherit; }
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* ---- TOP BAR ---- */
+#top-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 64px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+}
+.top-bar-left  { display: flex; align-items: center; gap: 16px; flex: 1; }
+.top-bar-title { font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+                  font-size: 15px; font-weight: 600; }
+.top-bar-right { display: flex; align-items: center; gap: 10px; }
+
+/* ---- FORM AREA ---- */
+#form-area {
+    margin-top: 64px;
+    padding: 28px 20px 60px;
+    min-height: calc(100vh - 64px);
+    box-sizing: border-box;
+}
+#form-container {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ---- SECTIONS ---- */
+.section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+}
+.section-header {
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 16px 0;
+}
+
+/* ---- FORM INPUTS ---- */
+.form-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.form-input {
+    width: 100%;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s ease;
+    resize: vertical;
+}
+.form-input:focus { border-color: var(--accent); }
+
+/* ---- TWO COLUMN GRID ---- */
+.field-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.field-grid-2 + .field-grid-2 { margin-top: 16px; }
+.field-group { display: flex; flex-direction: column; }
+
+/* ---- REPEATING ENTRIES ---- */
+.entry {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 12px;
+    position: relative;
+}
+.entry-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+.entry-summary {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.entry-header-right { display: flex; align-items: center; gap: 10px; }
+.collapse-toggle {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.collapse-toggle:hover { color: var(--text-primary); }
+.btn-remove-entry {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.btn-remove-entry:hover { color: var(--danger); }
+.entry-body { display: flex; flex-direction: column; gap: 12px; }
+.entry-body.collapsed { display: none; }
+
+/* ---- BULLETS ---- */
+.bullets-list { display: flex; flex-direction: column; gap: 8px; }
+.bullet-row { display: flex; align-items: center; gap: 8px; }
+.bullet-row .form-input { flex: 1; }
+.btn-remove-bullet {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    flex-shrink: 0;
+}
+.btn-remove-bullet:hover { color: var(--danger); }
+.btn-add-small {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 4px;
+}
+.btn-add-small:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---- SKILL TAGS ---- */
+.skill-category { margin-bottom: 14px; }
+.skill-category:last-child { margin-bottom: 0; }
+.skill-category-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.skill-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.skill-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.skill-tag .tag-text { line-height: 1; }
+.skill-tag .tag-remove {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    background: none;
+    border: none;
+}
+.skill-tag .tag-remove:hover { color: var(--danger); }
+.skill-add-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 13px;
+    padding: 2px 6px;
+    outline: none;
+    width: 120px;
+}
+.skill-add-input:focus { border-bottom-color: var(--accent); }
+.skill-add-input::placeholder { color: var(--text-muted); }
+
+/* ---- ADD ENTRY BUTTON ---- */
+.btn-add-entry {
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 4px;
+}
+.btn-add-entry:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---- PRIMARY BUTTONS ---- */
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-outline {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-outline:hover { background: rgba(99,102,241,0.1); }
+.btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- BACK LINK ---- */
+.back-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.back-link:hover { color: var(--text-primary); }
+
+/* ---- BOTTOM ACTIONS ---- */
+.bottom-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 8px;
+}
+
+/* ---- TOASTS (identical to index.html) ---- */
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.toast {
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #fff;
+    min-width: 280px;
+    max-width: 400px;
+    animation: slideIn 0.2s ease;
+}
+.toast--success { background: #14532d; border: 1px solid var(--success); }
+.toast--error   { background: #450a0a; border: 1px solid var(--danger); }
+.toast--info    { background: #1e1b4b; border: 1px solid var(--accent); }
+
+@keyframes slideIn {
+    from { transform: translateX(40px); opacity: 0; }
+    to   { transform: translateX(0);   opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────────────────────── -->
+<div id="top-bar">
+  <div class="top-bar-left">
+    <a class="back-link" href="/" id="back-link">← Back to Jobs</a>
+    <span class="top-bar-title">Resume Editor</span>
+  </div>
+  <div class="top-bar-right">
+    <button class="btn-outline" id="btn-save" onclick="saveResume(false)">Save</button>
+    <button class="btn-primary" id="btn-preview" onclick="saveResume(true)">Save &amp; Preview</button>
+  </div>
+</div>
+
+<!-- ── Form area ────────────────────────────────────────────────────── -->
+<div id="form-area">
+  <div id="form-container">
+
+    <div class="section" id="section-personal">
+      <div class="section-header">Personal Info</div>
+      <div class="field-grid-2">
+        <div class="field-group">
+          <label class="form-label">Name</label>
+          <input id="field-name" class="form-input" type="text" placeholder="Full name">
+        </div>
+        <div class="field-group">
+          <label class="form-label">Email</label>
+          <input id="field-email" class="form-input" type="email" placeholder="you@example.com">
+        </div>
+      </div>
+      <div class="field-grid-2">
+        <div class="field-group">
+          <label class="form-label">Phone</label>
+          <input id="field-phone" class="form-input" type="text" placeholder="+1 555 555 5555">
+        </div>
+        <div class="field-group">
+          <label class="form-label">Location</label>
+          <input id="field-location" class="form-input" type="text" placeholder="City, Country">
+        </div>
+      </div>
+      <div class="field-grid-2">
+        <div class="field-group">
+          <label class="form-label">LinkedIn</label>
+          <input id="field-linkedin" class="form-input" type="text" placeholder="linkedin.com/in/username">
+        </div>
+        <div class="field-group">
+          <label class="form-label">GitHub</label>
+          <input id="field-github" class="form-input" type="text" placeholder="github.com/username">
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="section-summary">
+      <div class="section-header">Summary</div>
+      <div class="field-group">
+        <textarea id="field-summary" class="form-input" rows="4" placeholder="Professional summary..."></textarea>
+      </div>
+    </div>
+
+    <div class="section" id="section-experience">
+      <div class="section-header">Experience</div>
+      <div id="experience-entries"></div>
+      <button class="btn-add-entry" onclick="addExperienceEntry(true)">+ Add Experience</button>
+    </div>
+
+    <div class="section" id="section-skills">
+      <div class="section-header">Skills</div>
+      <div class="skill-category">
+        <div class="skill-category-label">Languages</div>
+        <div class="skill-tag-row" id="skills-languages">
+          <input class="skill-add-input" type="text" placeholder="type to add..."
+                 onkeydown="handleSkillInput(event, 'skills-languages')">
+        </div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-label">Frameworks</div>
+        <div class="skill-tag-row" id="skills-frameworks">
+          <input class="skill-add-input" type="text" placeholder="type to add..."
+                 onkeydown="handleSkillInput(event, 'skills-frameworks')">
+        </div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-label">Tools</div>
+        <div class="skill-tag-row" id="skills-tools">
+          <input class="skill-add-input" type="text" placeholder="type to add..."
+                 onkeydown="handleSkillInput(event, 'skills-tools')">
+        </div>
+      </div>
+      <div class="skill-category">
+        <div class="skill-category-label">Other</div>
+        <div class="skill-tag-row" id="skills-other">
+          <input class="skill-add-input" type="text" placeholder="type to add..."
+                 onkeydown="handleSkillInput(event, 'skills-other')">
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="section-education">
+      <div class="section-header">Education</div>
+      <div id="education-entries"></div>
+      <button class="btn-add-entry" onclick="addEducationEntry()">+ Add Education</button>
+    </div>
+
+    <div class="section" id="section-projects">
+      <div class="section-header">Projects</div>
+      <div id="project-entries"></div>
+      <button class="btn-add-entry" onclick="addProjectEntry()">+ Add Project</button>
+    </div>
+
+    <div class="section" id="section-achievements">
+      <div class="section-header">Achievements</div>
+      <div class="bullets-list" id="achievements-list"></div>
+      <button class="btn-add-small" onclick="addAchievement('')">+ Add achievement</button>
+    </div>
+
+    <div class="bottom-actions">
+      <button class="btn-outline" id="btn-save-bottom" onclick="saveResume(false)">Save</button>
+      <button class="btn-primary" id="btn-preview-bottom" onclick="saveResume(true)">Save &amp; Preview</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Toasts ───────────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<script>
+/* ── Toast (identical to index.html) ────────────────────────────────── */
+function showToast(message, type = 'info', duration) {
+    if (duration == null) duration = type === 'error' ? 5000 : 3000;
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+/* ── Entry counter and global state ─────────────────────────────────── */
+let entryCounter = 0;
+function nextId() { return ++entryCounter; }
+
+let hasUnsavedChanges = false;
+
+document.addEventListener('input', (e) => {
+    if (e.target.closest('#form-area')) {
+        hasUnsavedChanges = true;
+    }
+});
+
+window.addEventListener('beforeunload', (e) => {
+    if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
+document.getElementById('back-link').addEventListener('click', (e) => {
+    if (hasUnsavedChanges) {
+        if (!confirm('You have unsaved changes. Leave without saving?')) {
+            e.preventDefault();
+        }
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveResume(false);
+    }
+});
+
+/* ── Page load ───────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const response = await fetch('/api/resume');
+        if (response.status === 404) {
+            showToast('master.json not found. Check that resume/master.json exists.', 'error', 8000);
+            return;
+        }
+        if (response.status === 500) {
+            showToast('master.json exists but contains invalid JSON. Fix the file manually.', 'error', 8000);
+            return;
+        }
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const resume = await response.json();
+        populateForm(resume);
+        hasUnsavedChanges = false;
+    } catch (err) {
+        showToast('Failed to load resume: ' + err.message, 'error', 5000);
+    }
+});
+
+/* ── populateForm ────────────────────────────────────────────────────── */
+function populateForm(resume) {
+    document.getElementById('field-name').value     = resume.personal?.name     || '';
+    document.getElementById('field-email').value    = resume.personal?.email    || '';
+    document.getElementById('field-phone').value    = resume.personal?.phone    || '';
+    document.getElementById('field-location').value = resume.personal?.location || '';
+    document.getElementById('field-linkedin').value = resume.personal?.linkedin || '';
+    document.getElementById('field-github').value   = resume.personal?.github   || '';
+
+    document.getElementById('field-summary').value = resume.summary || '';
+
+    const expContainer = document.getElementById('experience-entries');
+    expContainer.innerHTML = '';
+    (resume.experience || []).forEach(exp => {
+        const id = addExperienceEntry();
+        const entry = document.getElementById(`exp-entry-${id}`);
+        entry.querySelector('[data-field="company"]').value  = exp.company  || '';
+        entry.querySelector('[data-field="title"]').value    = exp.title    || '';
+        entry.querySelector('[data-field="start"]').value    = exp.start    || '';
+        entry.querySelector('[data-field="end"]').value      = exp.end      || '';
+        entry.querySelector('[data-field="location"]').value = exp.location || '';
+        const bulletsContainer = entry.querySelector('.bullets-list');
+        bulletsContainer.innerHTML = '';
+        (exp.bullets || []).forEach(bullet => {
+            addBullet(bulletsContainer, bullet);
+        });
+        updateEntryHeader(id);
+        if ((resume.experience || []).length > 1) {
+            collapseEntry(id);
+        }
+    });
+
+    ['languages', 'frameworks', 'tools', 'other'].forEach(cat => {
+        const container = document.getElementById(`skills-${cat}`);
+        container.querySelectorAll('.skill-tag').forEach(t => t.remove());
+        (resume.skills?.[cat] || []).forEach(skill => addSkillTag(container, skill));
+    });
+
+    const eduContainer = document.getElementById('education-entries');
+    eduContainer.innerHTML = '';
+    (resume.education || []).forEach(edu => {
+        const id = addEducationEntry();
+        const entry = document.getElementById(`edu-entry-${id}`);
+        entry.querySelector('[data-field="institution"]').value = edu.institution || '';
+        entry.querySelector('[data-field="degree"]').value      = edu.degree      || '';
+        entry.querySelector('[data-field="year"]').value        = edu.year        || '';
+        entry.querySelector('[data-field="gpa"]').value         = edu.gpa         || '';
+    });
+
+    const projContainer = document.getElementById('project-entries');
+    projContainer.innerHTML = '';
+    (resume.projects || []).forEach(proj => {
+        const id = addProjectEntry();
+        const entry = document.getElementById(`proj-entry-${id}`);
+        entry.querySelector('[data-field="name"]').value        = proj.name        || '';
+        entry.querySelector('[data-field="description"]').value = proj.description || '';
+        entry.querySelector('[data-field="url"]').value         = proj.url         || '';
+        const techContainer = entry.querySelector('.project-tech-tags');
+        (proj.tech || []).forEach(t => addSkillTag(techContainer, t));
+    });
+
+    const achContainer = document.getElementById('achievements-list');
+    achContainer.innerHTML = '';
+    (resume.achievements || []).forEach(a => addAchievement(a));
+}
+
+/* ── Experience entry builder ────────────────────────────────────────── */
+function addExperienceEntry(autoFocus = false) {
+    const id = nextId();
+    const container = document.getElementById('experience-entries');
+
+    const entry = document.createElement('div');
+    entry.className = 'entry experience-entry';
+    entry.id = `exp-entry-${id}`;
+
+    entry.innerHTML = `
+        <div class="entry-header" onclick="toggleEntry(${id})">
+            <span class="entry-summary" id="exp-summary-${id}">New Entry</span>
+            <div class="entry-header-right">
+                <button class="collapse-toggle" id="exp-toggle-${id}"
+                        onclick="event.stopPropagation(); toggleEntry(${id})">▼</button>
+                <button class="btn-remove-entry"
+                        onclick="event.stopPropagation(); removeEntry('exp-entry-${id}', 'experience-entries', '.experience-entry', 1)">
+                    Remove
+                </button>
+            </div>
+        </div>
+        <div class="entry-body" id="exp-body-${id}">
+            <div class="field-grid-2">
+                <div class="field-group">
+                    <label class="form-label">Company</label>
+                    <input data-field="company" class="form-input" type="text" placeholder="Company name"
+                           oninput="updateEntryHeader(${id})">
+                </div>
+                <div class="field-group">
+                    <label class="form-label">Title</label>
+                    <input data-field="title" class="form-input" type="text" placeholder="Job title"
+                           oninput="updateEntryHeader(${id})">
+                </div>
+            </div>
+            <div class="field-grid-2">
+                <div class="field-group">
+                    <label class="form-label">Start</label>
+                    <input data-field="start" class="form-input" type="text" placeholder="Aug 2023">
+                </div>
+                <div class="field-group">
+                    <label class="form-label">End</label>
+                    <input data-field="end" class="form-input" type="text" placeholder="Present">
+                </div>
+            </div>
+            <div class="field-group">
+                <label class="form-label">Location</label>
+                <input data-field="location" class="form-input" type="text" placeholder="City, Country">
+            </div>
+            <div>
+                <label class="form-label">Bullets</label>
+                <div class="bullets-list" id="bullets-${id}"></div>
+                <button class="btn-add-small"
+                        onclick="addBullet(document.getElementById('bullets-${id}'), '')">
+                    + Add bullet
+                </button>
+            </div>
+        </div>
+    `;
+
+    container.appendChild(entry);
+    if (autoFocus) {
+        addBullet(entry.querySelector('.bullets-list'), '');
+    }
+    updateRemoveButtons('experience-entries', '.experience-entry', 1);
+    hasUnsavedChanges = true;
+    return id;
+}
+
+function updateEntryHeader(id) {
+    const entry = document.getElementById(`exp-entry-${id}`);
+    if (!entry) return;
+    const title   = entry.querySelector('[data-field="title"]')?.value   || '';
+    const company = entry.querySelector('[data-field="company"]')?.value || '';
+    const start   = entry.querySelector('[data-field="start"]')?.value   || '';
+    const end     = entry.querySelector('[data-field="end"]')?.value     || '';
+    const summary = document.getElementById(`exp-summary-${id}`);
+    if (summary) {
+        summary.textContent = (title || 'Untitled') +
+            (company ? ' at ' + company : '') +
+            (start   ? ' (' + start + ' – ' + (end || 'Present') + ')' : '');
+    }
+}
+
+function toggleEntry(id) {
+    const body = document.getElementById(`exp-body-${id}`);
+    const toggle = document.getElementById(`exp-toggle-${id}`);
+    if (!body || !toggle) return;
+    const collapsed = body.classList.contains('collapsed');
+    body.classList.toggle('collapsed', !collapsed);
+    toggle.textContent = collapsed ? '▼' : '▶';
+}
+
+function collapseEntry(id) {
+    const body = document.getElementById(`exp-body-${id}`);
+    const toggle = document.getElementById(`exp-toggle-${id}`);
+    if (body)   body.classList.add('collapsed');
+    if (toggle) toggle.textContent = '▶';
+}
+
+/* ── Bullet builder ──────────────────────────────────────────────────── */
+function addBullet(container, value = '') {
+    const row = document.createElement('div');
+    row.className = 'bullet-row';
+    row.innerHTML = `
+        <input class="form-input bullet-input" type="text"
+               placeholder="Achievement — quantify where possible" value="">
+        <button class="btn-remove-bullet"
+                onclick="removeBullet(this)">×</button>
+    `;
+    row.querySelector('.bullet-input').value = value;
+    container.appendChild(row);
+    updateBulletRemoveButtons(container);
+    hasUnsavedChanges = true;
+}
+
+function removeBullet(btn) {
+    const container = btn.closest('.bullets-list');
+    btn.closest('.bullet-row').remove();
+    updateBulletRemoveButtons(container);
+    hasUnsavedChanges = true;
+}
+
+function updateBulletRemoveButtons(container) {
+    const rows = container.querySelectorAll('.bullet-row');
+    rows.forEach(row => {
+        const btn = row.querySelector('.btn-remove-bullet');
+        if (btn) btn.style.visibility = rows.length <= 1 ? 'hidden' : 'visible';
+    });
+}
+
+/* ── Achievements (simple list, no minimum) ─────────────────────────── */
+function addAchievement(value = '') {
+    const container = document.getElementById('achievements-list');
+    const row = document.createElement('div');
+    row.className = 'bullet-row';
+    row.innerHTML = `
+        <input class="form-input bullet-input" type="text"
+               placeholder="Award, certification, or accomplishment" value="">
+        <button class="btn-remove-bullet" onclick="removeAchievement(this)">×</button>
+    `;
+    row.querySelector('.bullet-input').value = value;
+    container.appendChild(row);
+    hasUnsavedChanges = true;
+}
+
+function removeAchievement(btn) {
+    btn.closest('.bullet-row').remove();
+    hasUnsavedChanges = true;
+}
+
+function collectAchievements() {
+    return Array.from(document.querySelectorAll('#achievements-list .bullet-input'))
+        .map(el => el.value.trim())
+        .filter(v => v !== '');
+}
+
+/* ── Education and project entry builders ───────────────────────────── */
+function addEducationEntry() {
+    const id = nextId();
+    const container = document.getElementById('education-entries');
+    const entry = document.createElement('div');
+    entry.className = 'entry education-entry';
+    entry.id = `edu-entry-${id}`;
+
+    entry.innerHTML = `
+        <div class="entry-header">
+            <span class="entry-summary">Education Entry</span>
+            <button class="btn-remove-entry"
+                    onclick="removeEntry('edu-entry-${id}', 'education-entries', '.education-entry', 0)">
+                Remove
+            </button>
+        </div>
+        <div class="entry-body">
+            <div class="field-grid-2">
+                <div class="field-group">
+                    <label class="form-label">Institution</label>
+                    <input data-field="institution" class="form-input" type="text" placeholder="University name">
+                </div>
+                <div class="field-group">
+                    <label class="form-label">Degree</label>
+                    <input data-field="degree" class="form-input" type="text" placeholder="B.Tech Computer Science">
+                </div>
+            </div>
+            <div class="field-grid-2">
+                <div class="field-group">
+                    <label class="form-label">Year</label>
+                    <input data-field="year" class="form-input" type="text" placeholder="2025">
+                </div>
+                <div class="field-group">
+                    <label class="form-label">GPA (optional)</label>
+                    <input data-field="gpa" class="form-input" type="text" placeholder="">
+                </div>
+            </div>
+        </div>
+    `;
+    container.appendChild(entry);
+    updateRemoveButtons('education-entries', '.education-entry', 0);
+    hasUnsavedChanges = true;
+    return id;
+}
+
+function addProjectEntry() {
+    const id = nextId();
+    const techContainerId = `proj-tech-${id}`;
+    const container = document.getElementById('project-entries');
+    const entry = document.createElement('div');
+    entry.className = 'entry project-entry';
+    entry.id = `proj-entry-${id}`;
+
+    entry.innerHTML = `
+        <div class="entry-header">
+            <span class="entry-summary">Project Entry</span>
+            <button class="btn-remove-entry"
+                    onclick="removeEntry('proj-entry-${id}', 'project-entries', '.project-entry', 0)">
+                Remove
+            </button>
+        </div>
+        <div class="entry-body">
+            <div class="field-grid-2">
+                <div class="field-group">
+                    <label class="form-label">Project Name</label>
+                    <input data-field="name" class="form-input" type="text" placeholder="Project Name">
+                </div>
+                <div class="field-group">
+                    <label class="form-label">URL (optional)</label>
+                    <input data-field="url" class="form-input" type="text" placeholder="https://github.com/...">
+                </div>
+            </div>
+            <div class="field-group">
+                <label class="form-label">Description</label>
+                <textarea data-field="description" class="form-input" rows="2"
+                          placeholder="What it does and the impact"></textarea>
+            </div>
+            <div class="skill-category">
+                <div class="skill-category-label">Tech Stack</div>
+                <div class="skill-tag-row project-tech-tags" id="${techContainerId}">
+                    <input class="skill-add-input" type="text" placeholder="type to add..."
+                           data-container="${techContainerId}"
+                           onkeydown="handleSkillInput(event, '${techContainerId}')">
+                </div>
+            </div>
+        </div>
+    `;
+    container.appendChild(entry);
+    updateRemoveButtons('project-entries', '.project-entry', 0);
+    hasUnsavedChanges = true;
+    return id;
+}
+
+/* ── Entry remove helpers ─────────────────────────────────────────────── */
+function removeEntry(entryId, containerId, entrySelector, minEntries) {
+    const container = document.getElementById(containerId);
+    const entries = container.querySelectorAll(entrySelector);
+    if (entries.length <= minEntries) {
+        showToast('Cannot remove the last entry', 'error');
+        return;
+    }
+    document.getElementById(entryId)?.remove();
+    updateRemoveButtons(containerId, entrySelector, minEntries);
+    hasUnsavedChanges = true;
+}
+
+function updateRemoveButtons(containerId, entrySelector, minEntries) {
+    const container = document.getElementById(containerId);
+    const entries = container.querySelectorAll(entrySelector);
+    entries.forEach(e => {
+        const btn = e.querySelector('.btn-remove-entry');
+        if (btn) btn.style.visibility = entries.length <= minEntries ? 'hidden' : 'visible';
+    });
+}
+
+/* ── Skill tag system ─────────────────────────────────────────────────── */
+function addSkillTag(container, text) {
+    const tag = document.createElement('span');
+    tag.className = 'skill-tag';
+    const textNode = document.createElement('span');
+    textNode.className = 'tag-text';
+    textNode.textContent = text;
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'tag-remove';
+    removeBtn.textContent = '×';
+    removeBtn.onclick = () => { tag.remove(); hasUnsavedChanges = true; };
+    tag.appendChild(textNode);
+    tag.appendChild(removeBtn);
+    const input = container.querySelector('.skill-add-input');
+    container.insertBefore(tag, input);
+}
+
+function handleSkillInput(event, containerId) {
+    if (event.key === 'Enter' || event.key === ',') {
+        event.preventDefault();
+        const input = event.target;
+        const raw = input.value;
+        const skills = raw.split(',').map(s => s.trim()).filter(s => s !== '');
+        const container = document.getElementById(containerId);
+        skills.forEach(skill => addSkillTag(container, skill));
+        input.value = '';
+        if (skills.length) hasUnsavedChanges = true;
+    }
+}
+
+/* ── collectFormData ──────────────────────────────────────────────────── */
+function collectFormData() {
+    const resume = {
+        personal: {
+            name:     document.getElementById('field-name').value.trim(),
+            email:    document.getElementById('field-email').value.trim(),
+            phone:    document.getElementById('field-phone').value.trim(),
+            location: document.getElementById('field-location').value.trim(),
+            linkedin: document.getElementById('field-linkedin').value.trim(),
+            github:   document.getElementById('field-github').value.trim(),
+        },
+        summary: document.getElementById('field-summary').value.trim(),
+        experience: [],
+        education:  [],
+        skills: {
+            languages:  collectSkillTags('skills-languages'),
+            frameworks: collectSkillTags('skills-frameworks'),
+            tools:      collectSkillTags('skills-tools'),
+            other:      collectSkillTags('skills-other'),
+        },
+        projects: [],
+        achievements: collectAchievements(),
+    };
+
+    document.querySelectorAll('.experience-entry').forEach(entry => {
+        const bullets = Array.from(entry.querySelectorAll('.bullet-input'))
+            .map(el => el.value.trim())
+            .filter(v => v !== '');
+        resume.experience.push({
+            company:  entry.querySelector('[data-field="company"]').value.trim(),
+            title:    entry.querySelector('[data-field="title"]').value.trim(),
+            start:    entry.querySelector('[data-field="start"]').value.trim(),
+            end:      entry.querySelector('[data-field="end"]').value.trim(),
+            location: entry.querySelector('[data-field="location"]').value.trim(),
+            bullets,
+        });
+    });
+
+    document.querySelectorAll('.education-entry').forEach(entry => {
+        resume.education.push({
+            institution: entry.querySelector('[data-field="institution"]').value.trim(),
+            degree:      entry.querySelector('[data-field="degree"]').value.trim(),
+            year:        entry.querySelector('[data-field="year"]').value.trim(),
+            gpa:         entry.querySelector('[data-field="gpa"]')?.value.trim() || '',
+        });
+    });
+
+    document.querySelectorAll('.project-entry').forEach(entry => {
+        const techContainer = entry.querySelector('.project-tech-tags');
+        resume.projects.push({
+            name:        entry.querySelector('[data-field="name"]').value.trim(),
+            description: entry.querySelector('[data-field="description"]').value.trim(),
+            url:         entry.querySelector('[data-field="url"]')?.value.trim() || '',
+            tech:        collectSkillTags(techContainer.id),
+        });
+    });
+
+    return resume;
+}
+
+function collectSkillTags(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.skill-tag .tag-text'))
+        .map(el => el.textContent.trim())
+        .filter(t => t !== '');
+}
+
+/* ── saveResume ───────────────────────────────────────────────────────── */
+async function saveResume(andPreview = false) {
+    const data = collectFormData();
+
+    if (!data.personal.name.trim()) {
+        showToast('Name is required', 'error', 5000);
+        document.getElementById('field-name').focus();
+        return;
+    }
+    if (!data.summary.trim()) {
+        showToast('Summary is required', 'error', 5000);
+        document.getElementById('field-summary').focus();
+        return;
+    }
+    if (data.experience.length === 0) {
+        showToast('At least one experience entry is required', 'error', 5000);
+        return;
+    }
+    const hasSkills = [
+        ...data.skills.languages,
+        ...data.skills.frameworks,
+        ...data.skills.tools,
+    ].length > 0;
+    if (!hasSkills) {
+        showToast('At least one skill (language, framework, or tool) is required', 'error', 5000);
+        return;
+    }
+
+    setSaveButtonState('saving');
+
+    try {
+        const response = await fetch('/api/resume', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+
+        if (response.ok) {
+            hasUnsavedChanges = false;
+            showToast('Resume saved successfully', 'success');
+            setSaveButtonState('saved');
+
+            if (andPreview) {
+                await openPreview();
+            }
+
+            setTimeout(() => setSaveButtonState('idle'), 2000);
+
+        } else if (response.status === 422) {
+            const error = await response.json();
+            const detail = error.detail;
+            if (Array.isArray(detail)) {
+                const messages = detail.map(e => {
+                    const field = e.loc ? e.loc.slice(1).join(' → ') : 'unknown field';
+                    return `${field}: ${e.msg}`;
+                });
+                showToast('Validation failed:\n' + messages.join('\n'), 'error', 6000);
+            } else {
+                showToast('Validation failed: ' + JSON.stringify(detail), 'error', 6000);
+            }
+            setSaveButtonState('idle');
+
+        } else {
+            const text = await response.text();
+            showToast('Save failed: ' + text, 'error', 5000);
+            setSaveButtonState('idle');
+        }
+
+    } catch (err) {
+        showToast('Network error: ' + err.message, 'error', 5000);
+        setSaveButtonState('idle');
+    }
+}
+
+/* ── openPreview (fetch + blob, not window.open GET) ────────────────────── */
+async function openPreview() {
+    try {
+        const response = await fetch('/api/resume/preview', { method: 'POST' });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+        showToast('Preview failed: ' + err.message, 'error', 5000);
+    }
+}
+
+/* ── Save button state ───────────────────────────────────────────────── */
+function setSaveButtonState(state) {
+    const map = {
+        'saving': { save: 'Saving...', preview: 'Saving...', disabled: true },
+        'saved':  { save: '✓ Saved',   preview: '✓ Saved',   disabled: false },
+        'idle':   { save: 'Save',       preview: 'Save & Preview', disabled: false },
+    };
+    const s = map[state] || map['idle'];
+    ['btn-save', 'btn-save-bottom'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = s.save; el.disabled = s.disabled; }
+    });
+    ['btn-preview', 'btn-preview-bottom'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = s.preview; el.disabled = s.disabled; }
+    });
+}
+</script>
+</body>
+</html>
