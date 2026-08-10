@@ -7,7 +7,7 @@ import httpx
 
 import config
 import db
-from models import Job
+from models import Job, SavedSearch
 from utils import clean_text, setup_logger
 
 
@@ -124,10 +124,14 @@ class LinkedInScraper:
         location: str,
         easy_apply_only: bool,
         max_results: int,
+        geo_id: str | None = None,
     ) -> list[dict]:
         results: list[dict] = []
         start = 0
         page_size = 25
+
+        if geo_id is None:
+            geo_id = config.LINKEDIN_GEO_ID
 
         self.logger.info(
             f"Searching: '{keywords}' in '{location or 'any'}' "
@@ -143,8 +147,8 @@ class LinkedInScraper:
                 "origin:JOB_SEARCH_PAGE_SEARCH_BUTTON",
                 f"keywords:{kw_encoded}",
             ]
-            if config.LINKEDIN_GEO_ID:
-                query_parts.append(f"locationUnion:(geoId:{config.LINKEDIN_GEO_ID})")
+            if geo_id:
+                query_parts.append(f"locationUnion:(geoId:{geo_id})")
                 filters = "distance:List(25)"
                 if easy_apply_only:
                     filters += ",easyApply:List(true)"
@@ -208,31 +212,56 @@ class LinkedInScraper:
         except (AttributeError, TypeError):
             return ""
 
-    async def scrape(self) -> list[Job]:
+    async def scrape(
+        self,
+        search: SavedSearch | None = None,
+        max_results_override: int | None = None,
+    ) -> list[Job]:
+        """
+        When `search` is None, behavior is unchanged from Session <12:
+        config.TARGET_TITLES / config.LINKEDIN_GEO_ID / easy_apply_only=True,
+        capped at config.MAX_JOBS_PER_SCRAPE (or max_results_override if given).
+        When `search` is provided, its titles/geo_id/easy_apply_only are used
+        instead, capped at max_results_override if given, else search.max_results.
+        """
         db.init_db()
         seen_ids = {j.linkedin_job_id for j in db.get_all_jobs()}
         new_jobs: list[Job] = []
 
+        if search is not None:
+            titles = search.titles
+            geo_id = search.geo_id
+            geo_label = search.geo_label
+            easy_apply_only = search.easy_apply_only
+            cap = max_results_override if max_results_override is not None else search.max_results
+        else:
+            titles = config.TARGET_TITLES
+            geo_id = config.LINKEDIN_GEO_ID
+            geo_label = config.TARGET_LOCATION
+            easy_apply_only = True
+            cap = max_results_override if max_results_override is not None else config.MAX_JOBS_PER_SCRAPE
+
         self.logger.info(
             f"Scrape started — {len(seen_ids)} jobs already in DB. "
-            f"Cap: {config.MAX_JOBS_PER_SCRAPE} new jobs."
+            f"Cap: {cap} new jobs."
         )
 
-        for title in config.TARGET_TITLES:
-            if len(new_jobs) >= config.MAX_JOBS_PER_SCRAPE:
-                self.logger.info("Reached MAX_JOBS_PER_SCRAPE cap. Stopping.")
+        for title in titles:
+            if len(new_jobs) >= cap:
+                self.logger.info("Reached scrape cap. Stopping.")
                 break
 
-            remaining = config.MAX_JOBS_PER_SCRAPE - len(new_jobs)
+            remaining = cap - len(new_jobs)
             raw_cards = await self.search_jobs(
                 keywords=title,
-                location=config.TARGET_LOCATION,
-                easy_apply_only=True,
+                location=geo_label,
+                easy_apply_only=easy_apply_only,
                 max_results=remaining,
+                geo_id=geo_id,
             )
 
             for card in raw_cards:
-                if len(new_jobs) >= config.MAX_JOBS_PER_SCRAPE:
+                if len(new_jobs) >= cap:
                     break
 
                 # cards come directly from "included" — jobPostingUrn is the clean ID field
@@ -267,19 +296,38 @@ class LinkedInScraper:
                 self.logger.info(f"Saved: {job.title} @ {job.company} [{job_id}]")
 
         self.logger.info(f"Scrape complete — {len(new_jobs)} new jobs saved.")
+        if search is not None and search.id is not None:
+            db.update_search_last_run(search.id)
         return new_jobs
 
 
 if __name__ == "__main__":
+    import sys
+
     from rich.console import Console
     from rich.table import Table
 
     async def main() -> None:
         scraper = LinkedInScraper()
         console = Console()
-        console.print("[bold green]Starting LinkedIn scraper...[/bold green]")
 
-        jobs = await scraper.scrape()
+        search = None
+        if "--search-id" in sys.argv:
+            idx = sys.argv.index("--search-id")
+            try:
+                search_id = int(sys.argv[idx + 1])
+            except (IndexError, ValueError):
+                console.print("[red]Usage: python scraper.py --search-id <id>[/red]")
+                return
+            search = db.get_search_by_id(search_id)
+            if not search:
+                console.print(f"[red]Search ID {search_id} not found.[/red]")
+                return
+            console.print(f"[bold green]Starting LinkedIn scraper — search: {search.name}[/bold green]")
+        else:
+            console.print("[bold green]Starting LinkedIn scraper...[/bold green]")
+
+        jobs = await scraper.scrape(search=search)
 
         table = Table(title=f"Found {len(jobs)} new jobs")
         table.add_column("Title", style="cyan")
