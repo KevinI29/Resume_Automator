@@ -18,6 +18,7 @@ from rich.console import Console
 import config
 import db
 from models import Job
+from qa_resolver import QAResolver
 from utils import setup_logger
 
 console = Console()
@@ -35,6 +36,8 @@ class LinkedInApplicant:
         self.logger = setup_logger("applicant")
         self.playwright = None
         self.context: BrowserContext | None = None
+        self.qa_resolver = QAResolver()
+        self._pending_fields: list[dict] = []
         Path("logs/screenshots").mkdir(parents=True, exist_ok=True)
 
     # ── Browser setup ──────────────────────────────────────────────────────────
@@ -154,6 +157,28 @@ class LinkedInApplicant:
         await page.screenshot(path=path)
         self.logger.info(f"Screenshot saved: {path}")
 
+    async def _dismiss_modal(self, page: Page) -> None:
+        """
+        Closes the Easy Apply modal by clicking the X/Dismiss button.
+        Tries known selectors in order; logs a warning if none found.
+        """
+        selectors = [
+            'button[aria-label="Dismiss"]',
+            'button.artdeco-modal__dismiss',
+            'button[data-test-modal-close-btn]',
+        ]
+        for sel in selectors:
+            try:
+                btn = await page.query_selector(sel)
+                if btn:
+                    await self._human_click(btn)
+                    await asyncio.sleep(1.0)
+                    self.logger.info("Modal dismissed")
+                    return
+            except Exception:
+                continue
+        self.logger.warning("Could not find modal dismiss button — modal may still be open")
+
     # ── Navigation ─────────────────────────────────────────────────────────────
 
     async def navigate_to_job(self, page: Page, url: str) -> str | None:
@@ -203,6 +228,84 @@ class LinkedInApplicant:
 
     # ── Easy Apply modal ───────────────────────────────────────────────────────
 
+    # Signals that the Easy Apply modal is open. `dialog[data-testid="dialog"]`
+    # is the confirmed current markup (captured from a live Playwright trace on
+    # 2026-07-26 — LinkedIn now renders Easy Apply as a native <dialog> element,
+    # not the old div.jobs-easy-apply-modal). Older selectors are kept as
+    # fallback in case LinkedIn A/B tests a different variant.
+    MODAL_SELECTORS = (
+        'dialog[data-testid="dialog"], '
+        'dialog[aria-labelledby="dialog-header"], '
+        'div.jobs-easy-apply-modal, '
+        'div[data-test-modal-id="easy-apply-modal"], '
+        'h2#jobs-apply-header, '
+        'div.artdeco-modal[role="dialog"], '
+        'div[aria-labelledby="jobs-apply-header"], '
+        'div[role="dialog"] button[aria-label="Continue to next step"], '
+        'div[role="dialog"] button[aria-label="Submit application"], '
+        'div[role="dialog"] button[aria-label="Review your application"]'
+    )
+
+    # Container selector used to read the modal's text content, to detect
+    # whether clicking Next/Review actually advanced the form.
+    MODAL_CONTENT_SELECTOR = (
+        'dialog[data-testid="dialog"], '
+        'dialog[aria-labelledby="dialog-header"], '
+        '.jobs-easy-apply-modal, '
+        '[role="dialog"]'
+    )
+
+    # Fieldsets (radio/checkbox groups) must be scoped to the same modal
+    # container as MODAL_CONTENT_SELECTOR — previously scoped only to
+    # `.jobs-easy-apply-modal fieldset, [role="dialog"] fieldset`, which
+    # silently matched zero fieldsets against the native <dialog> markup
+    # (Session 10.1: this is why a required radio group was never even
+    # logged, let alone filled).
+    FIELDSET_SCOPE_SELECTOR = (
+        'dialog[data-testid="dialog"] fieldset, '
+        'dialog[aria-labelledby="dialog-header"] fieldset, '
+        '.jobs-easy-apply-modal fieldset, '
+        '[role="dialog"] fieldset'
+    )
+
+    async def _fieldset_is_required(self, fieldset) -> bool:
+        """
+        True if a radio/checkbox fieldset is required. LinkedIn marks this
+        inconsistently, so every reliable signal is OR'd together:
+        asterisk in the legend, aria-required or data-test-form-element-required
+        on the fieldset, a required child input, or a hidden 'Required' span.
+        """
+        try:
+            legend = await fieldset.query_selector('legend')
+            legend_text = (await legend.inner_text()).strip() if legend else ''
+            if '*' in legend_text:
+                return True
+
+            aria_required = await fieldset.get_attribute('aria-required')
+            if aria_required and aria_required.lower() == 'true':
+                return True
+
+            data_required = await fieldset.get_attribute('data-test-form-element-required')
+            if data_required and data_required.lower() == 'true':
+                return True
+
+            if await fieldset.query_selector('input[required]'):
+                return True
+
+            if await fieldset.query_selector('span:text-is("Required")'):
+                return True
+        except Exception:
+            pass
+        return False
+
+    async def _modal_is_open(self, page: Page) -> bool:
+        """True if an Easy Apply modal is currently open on the page."""
+        try:
+            el = await page.query_selector(self.MODAL_SELECTORS)
+            return el is not None
+        except Exception:
+            return False
+
     async def click_easy_apply(self, page: Page) -> bool:
         """Find and click the Easy Apply button, wait for modal to open."""
         await self._human_delay(2.0, 3.0)
@@ -226,19 +329,22 @@ class LinkedInApplicant:
 
         all_selectors = text_selectors + class_selectors
 
+        modal_sel = self.MODAL_SELECTORS
+
         for sel in all_selectors:
             try:
+                # If a previous click already opened the modal, don't click again —
+                # a second click lands on the Apply button behind the overlay.
+                if await self._modal_is_open(page):
+                    self.logger.info("Easy Apply modal already open")
+                    return True
+
                 btn = await page.query_selector(sel)
                 if btn:
                     self.logger.info(f"Found Easy Apply button with selector: {sel}")
                     await btn.scroll_into_view_if_needed()
                     await self._human_delay(0.5, 1.5)
                     await self._human_click(btn)
-                    modal_sel = (
-                        'div.jobs-easy-apply-modal, '
-                        'h2#jobs-apply-header, '
-                        'div[data-test-modal-id="easy-apply-modal"]'
-                    )
                     try:
                         await page.wait_for_selector(modal_sel, timeout=8000)
                         self.logger.info("Easy Apply modal opened")
@@ -247,6 +353,9 @@ class LinkedInApplicant:
                         self.logger.info(f"Modal not found — retrying click with {sel}")
                         await page.evaluate("window.scrollTo(0, 0)")
                         await self._human_delay(1.5, 2.5)
+                        if await self._modal_is_open(page):
+                            self.logger.info("Easy Apply modal opened (detected after retry wait)")
+                            return True
                         btn2 = await page.query_selector(sel)
                         if btn2:
                             await btn2.scroll_into_view_if_needed()
@@ -262,6 +371,12 @@ class LinkedInApplicant:
             except Exception as e:
                 self.logger.debug(f"Selector {sel} error: {e}")
                 continue
+
+        # Final safety net: the button may have opened the modal even though
+        # our post-click waits missed it (the exact failure in the 2026-07-26 run).
+        if await self._modal_is_open(page):
+            self.logger.info("Easy Apply modal open (detected on final check)")
+            return True
 
         # Last resort — dump all buttons on page to logs for debugging
         buttons = await page.query_selector_all('button')
@@ -316,27 +431,92 @@ class LinkedInApplicant:
             self.logger.error(f"Resume upload failed: {exc}")
             return False
 
-    async def fill_form_fields(self, page: Page) -> bool:
-        """Fill common form fields conservatively. Skips anything unfamiliar."""
+    # ── Q&A resolver fill primitives ────────────────────────────────────────
+    # These determine HOW a field gets filled once qa_resolver has decided
+    # WHAT to fill it with. Frozen shape — resolver logic lives in qa_resolver.py.
+
+    async def _get_field_label(self, page: Page, field) -> str:
+        """Best-effort label lookup: aria-label, then <label for=id>, then placeholder."""
+        aria = await field.get_attribute('aria-label')
+        if aria and aria.strip():
+            return aria.strip()
+        field_id = await field.get_attribute('id')
+        if field_id:
+            label_el = await page.query_selector(f'label[for="{field_id}"]')
+            if label_el:
+                text = (await label_el.inner_text()).strip()
+                if text:
+                    return text
+        placeholder = await field.get_attribute('placeholder')
+        if placeholder and placeholder.strip():
+            return placeholder.strip()
+        return "Unlabeled field"
+
+    async def _fill_text_input(self, field, value: str) -> None:
+        """Clears (select-all + Backspace) and types a resolved answer into a text/number input."""
+        await field.scroll_into_view_if_needed()
+        await self._human_click(field)
+        await field.click(click_count=3)
+        await field.press("Backspace")
+        await self._human_type(field, value)
+        await self._human_delay(0.5, 1.0)
+
+    async def _get_select_options(self, select) -> list[str]:
+        options = await select.query_selector_all('option')
+        texts = []
+        for opt in options:
+            txt = (await opt.inner_text()).strip()
+            if txt and txt.lower() not in ('select an option', ''):
+                texts.append(txt)
+        return texts
+
+    async def _fill_select(self, select, answer: str) -> bool:
+        """Selects the option whose text best matches `answer` (case-insensitive substring)."""
+        options = await select.query_selector_all('option')
+        answer_lower = answer.lower()
+        for opt in options:
+            txt = (await opt.inner_text()).strip()
+            val = await opt.get_attribute('value') or ''
+            txt_lower = txt.lower()
+            if txt_lower and (txt_lower == answer_lower or answer_lower in txt_lower or txt_lower in answer_lower):
+                await select.select_option(value=val if val else txt)
+                self.logger.info(f"Selected dropdown option: {txt}")
+                return True
+        return False
+
+    async def _get_radio_option_label(self, radio) -> str:
+        return await radio.evaluate(
+            'el => {'
+            '  const lbl = el.closest("label") || document.querySelector(`label[for="${el.id}"]`);'
+            '  return (lbl ? lbl.textContent : (el.getAttribute("aria-label") || "")).trim();'
+            '}'
+        )
+
+    async def _click_matching_radio(self, radios, labels: list[str], answer: str) -> bool:
+        answer_lower = answer.lower()
+        for radio, lbl in zip(radios, labels):
+            lbl_lower = lbl.lower()
+            if lbl_lower and (lbl_lower == answer_lower or answer_lower in lbl_lower or lbl_lower in answer_lower):
+                await self._human_click(radio)
+                return True
+        return False
+
+    async def fill_form_fields(self, page: Page) -> None:
+        """
+        Fill form fields on the current step.
+        Required fields — input[required]/[aria-required], select[required]/
+        [aria-required], and legend-bearing radio fieldsets — are resolved via
+        the four-tier QAResolver cascade (see qa_resolver.py). Any required
+        field the resolver can't confidently answer is appended to
+        self._pending_fields instead of being left blank; the caller
+        (handle_form_steps / apply_to_job) checks that list and parks the job
+        as pending_questions rather than looping to MAX_STEPS.
+        Optional fields that can't be resolved are left blank — unchanged
+        from before this session.
+        """
         await self._human_delay(1.0, 2.0)
 
-        # --- Phone number ---
-        phone_field = await page.query_selector(
-            'input[id*="phoneNumber"], '
-            'input[name*="phoneNumber"], '
-            'input[aria-label*="Mobile phone"], '
-            'input[aria-label*="Phone number"], '
-            'input[aria-label*="phone"]'
-        )
-        if phone_field:
-            await phone_field.scroll_into_view_if_needed()
-            await self._human_click(phone_field)
-            await phone_field.click(click_count=3)
-            await phone_field.press("Backspace")
-            await self._human_type(phone_field, "9884561353")
-            await self._human_delay(0.5, 1.0)
-
-        # --- Location (city) ---
+        # --- Location (city) --- unrelated to Q&A resolution, unchanged
         location_field = await page.query_selector(
             'input[aria-label*="ity"], '
             'input[aria-label*="ocation"], '
@@ -375,163 +555,132 @@ class LinkedInApplicant:
                     await location_field.press("Enter")
                     self.logger.warning("Location dropdown did not appear — used typed value")
 
-        # --- Current CTC ---
-        current_ctc = await self._find_input_by_label(
-            page, "current ctc", "current salary", "current compensation"
-        )
-        if current_ctc:
-            val = await current_ctc.input_value()
-            if not val.strip():
-                await current_ctc.scroll_into_view_if_needed()
-                await current_ctc.click(click_count=3)
-                await self._human_type(current_ctc, str(config.CURRENT_CTC))
-                self.logger.info("Filled current CTC")
-
-        # --- Expected CTC ---
-        expected_ctc = await self._find_input_by_label(
-            page, "expected ctc", "expected salary", "expected compensation",
-            "desired salary"
-        )
-        if expected_ctc:
-            val = await expected_ctc.input_value()
-            if not val.strip():
-                await expected_ctc.scroll_into_view_if_needed()
-                await expected_ctc.click(click_count=3)
-                await self._human_type(expected_ctc, str(config.EXPECTED_CTC))
-                self.logger.info("Filled expected CTC")
-
-        # --- Notice period ---
-        notice = await self._find_input_by_label(
-            page, "notice period", "notice", "joining"
-        )
-        if notice:
-            val = await notice.input_value()
-            if not val.strip():
-                await notice.scroll_into_view_if_needed()
-                await notice.click(click_count=3)
-                await self._human_type(notice, str(config.NOTICE_PERIOD_DAYS))
-                self.logger.info("Filled notice period")
-
-        # --- Years of experience dropdown ---
-        await self._select_option_by_label(
-            page,
-            ["years of professional experience", "years of experience", "total years"],
-            ["0", "less than 1", "0-1", "fresher", "1"]
-        )
-
-        # --- Months of experience dropdown ---
+        # --- Months of experience dropdown --- unrelated to Q&A resolution, unchanged
         await self._select_option_by_label(
             page,
             ["months of experience", "additional months", "total months"],
             ["0", "less than 6", "0-6", "none"]
         )
 
-        # --- Work authorization dropdown ---
-        await self._select_option_by_label(
-            page,
-            ["authorized", "eligible to work", "work authorization", "legally authorized"],
-            ["yes", "true", "1", "authorized"]
-        )
-
-        # --- Gender dropdown ---
+        # --- Gender dropdown --- unrelated to Q&A resolution, unchanged
         await self._select_option_by_label(
             page,
             ["gender"],
             ["male", "prefer not", "not to say"]
         )
 
-        # --- Fieldset/legend-based radio questions (LinkedIn screening questions) ---
-        # LinkedIn puts "Are you currently a student?" etc. in <fieldset><legend> — not <label>
-        try:
-            fieldsets = await page.query_selector_all(
-                '.jobs-easy-apply-modal fieldset, [role="dialog"] fieldset'
-            )
-            for fieldset in fieldsets:
-                legend = await fieldset.query_selector('legend')
-                legend_text = (await legend.inner_text()).lower().strip() if legend else ''
-
-                radios = await fieldset.query_selector_all('input[type="radio"]')
-                if not radios:
-                    continue
-
-                any_checked = False
-                for r in radios:
-                    if await r.is_checked():
-                        any_checked = True
-                        break
-                if any_checked:
-                    continue
-
-                if not legend_text:
-                    self.logger.info("Field group has no label — applying type-based fallback")
-
-                await self._human_click(radios[0])
-                self.logger.info(
-                    f"Selected first radio for: '{legend_text or 'unlabeled fieldset'}'"
-                )
-                await self._human_delay(0.3, 0.7)
-        except Exception as exc:
-            self.logger.warning(f"Fieldset radio handling warning: {exc}")
-
-        # --- Work authorization radios (aria-label based fallback) ---
-        try:
-            radios = await page.query_selector_all('input[type="radio"]')
-            for radio in radios:
-                label = await radio.evaluate(
-                    'el => {'
-                    '  const lbl = el.closest("label") || document.querySelector(`label[for="${el.id}"]`);'
-                    '  return lbl ? lbl.textContent : el.getAttribute("aria-label") || "";'
-                    '}'
-                )
-                if any(w in label.lower() for w in ["yes", "authorized", "citizen", "legally eligible"]):
-                    is_checked = await radio.is_checked()
-                    if not is_checked:
-                        await self._human_click(radio)
-                    break
-        except Exception as exc:
-            self.logger.warning(f"Radio fill warning (non-fatal): {exc}")
-
-        # --- Years of experience ---
-        try:
-            exp_inputs = await page.query_selector_all(
-                'input[id*="experience"], input[name*="experience"]'
-            )
-            for inp in exp_inputs:
-                val = await inp.input_value()
-                if not val:
-                    await inp.fill(str(config.EXPERIENCE_YEARS))
-                    await asyncio.sleep(0.3)
-
-            exp_selects = await page.query_selector_all(
-                'select[id*="experience"], select[name*="experience"]'
-            )
-            for sel in exp_selects:
-                await sel.select_option(index=1)
-        except Exception as exc:
-            self.logger.warning(f"Experience fill warning (non-fatal): {exc}")
-
-        # --- Log any remaining empty required text/number inputs (excludes radios/checkboxes) ---
+        # --- Required text/number inputs -> four-tier resolver ---
         required_inputs = await page.query_selector_all(
             'input[required]:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), '
             'input[aria-required="true"]:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'
         )
         for inp in required_inputs:
             val = await inp.input_value()
-            if not val.strip():
-                label = await inp.get_attribute('aria-label') or ''
-                placeholder = await inp.get_attribute('placeholder') or ''
-                self.logger.warning(
-                    f"Unfilled required field: label='{label}' placeholder='{placeholder}'"
-                )
+            if val.strip():
+                continue
+            label = await self._get_field_label(page, inp)
+            field_type = await inp.get_attribute('type') or 'text'
+            resolved = await self.qa_resolver.resolve_field(label, field_type, None)
+            if resolved.resolved:
+                await self._fill_text_input(inp, resolved.answer)
+                self.logger.info(f"Filled required field '{label}' ({resolved.source})")
+            else:
+                self._pending_fields.append({
+                    "label": label, "field_type": field_type, "options": None,
+                    "ai_suggested_answer": resolved.ai_suggestion,
+                    "ai_confidence": resolved.ai_confidence,
+                })
 
-        return True
+        # --- Required select dropdowns -> four-tier resolver ---
+        required_selects = await page.query_selector_all(
+            'select[required], select[aria-required="true"]'
+        )
+        for sel in required_selects:
+            current_value = await sel.evaluate('el => el.value')
+            if current_value:
+                continue
+            label = await self._get_field_label(page, sel)
+            options = await self._get_select_options(sel)
+            resolved = await self.qa_resolver.resolve_field(label, "select", options)
+            filled = False
+            if resolved.resolved:
+                filled = await self._fill_select(sel, resolved.answer)
+                if filled:
+                    self.logger.info(f"Filled required dropdown '{label}' ({resolved.source})")
+            if not filled:
+                self._pending_fields.append({
+                    "label": label, "field_type": "select", "options": options,
+                    "ai_suggested_answer": resolved.ai_suggestion,
+                    "ai_confidence": resolved.ai_confidence,
+                })
 
-    async def handle_form_steps(self, page: Page) -> bool:
+        # --- Radio/checkbox fieldsets (LinkedIn screening questions) -> four-tier resolver ---
+        # LinkedIn puts "Are you currently a student?" etc. in <fieldset><legend> — not
+        # <label>. Session 10.1: a fieldset is only in scope for the resolver if
+        # _fieldset_is_required() finds a real required signal (asterisk, aria-required,
+        # data-test-form-element-required, a required child input, or a hidden
+        # "Required" span) — non-required groups are left untouched, same as any
+        # other optional field.
+        try:
+            fieldsets = await page.query_selector_all(self.FIELDSET_SCOPE_SELECTOR)
+            for fieldset in fieldsets:
+                radios = await fieldset.query_selector_all('input[type="radio"]')
+                checkboxes = [] if radios else await fieldset.query_selector_all('input[type="checkbox"]')
+                inputs = radios or checkboxes
+                if not inputs:
+                    continue
+                field_type = "radio" if radios else "checkbox"
+
+                any_checked = False
+                for inp in inputs:
+                    if await inp.is_checked():
+                        any_checked = True
+                        break
+                if any_checked:
+                    continue
+
+                if not await self._fieldset_is_required(fieldset):
+                    continue
+
+                legend = await fieldset.query_selector('legend')
+                legend_text = (await legend.inner_text()).strip() if legend else ''
+
+                if not legend_text:
+                    # No question text to resolve against — preserve the old
+                    # best-effort fallback rather than leaving it blank.
+                    self.logger.info("Field group has no label — applying type-based fallback")
+                    await self._human_click(inputs[0])
+                    await self._human_delay(0.3, 0.7)
+                    continue
+
+                option_labels = [await self._get_radio_option_label(inp) for inp in inputs]
+                resolved = await self.qa_resolver.resolve_field(legend_text, field_type, option_labels)
+                filled = False
+                if resolved.resolved:
+                    filled = await self._click_matching_radio(inputs, option_labels, resolved.answer)
+                    if filled:
+                        self.logger.info(
+                            f"Selected {field_type} '{legend_text}' -> '{resolved.answer}' ({resolved.source})"
+                        )
+                if not filled:
+                    self._pending_fields.append({
+                        "label": legend_text, "field_type": field_type, "options": option_labels,
+                        "ai_suggested_answer": resolved.ai_suggestion,
+                        "ai_confidence": resolved.ai_confidence,
+                    })
+                await self._human_delay(0.3, 0.7)
+        except Exception as exc:
+            self.logger.warning(f"Fieldset radio handling warning: {exc}")
+
+    async def handle_form_steps(self, page: Page) -> str:
         """
         State machine for the multi-step Easy Apply form.
         Loops through Next → Review → Submit, max 8 steps.
         Only increments step counter when form content actually changes.
-        Returns True if application was submitted.
+        Returns "submitted", "failed", or "pending" — "pending" means
+        fill_form_fields() queued one or more required fields it couldn't
+        resolve (see self._pending_fields); the caller parks the job as
+        pending_questions instead of retrying to MAX_STEPS.
         """
         max_steps = 8
         step = 0
@@ -546,6 +695,8 @@ class LinkedInApplicant:
 
             # Fill fields on the current page
             await self.fill_form_fields(page)
+            if self._pending_fields:
+                return "pending"
             await self._human_delay(1.0, 2.0)
 
             # Submit button — we're done
@@ -557,7 +708,7 @@ class LinkedInApplicant:
                 self.logger.info("Found Submit button — submitting application")
                 await self._human_click(submit_btn)
                 await self._human_delay(2.0, 3.0)
-                return True
+                return "submitted"
 
             # Review button
             review_btn = await page.query_selector(
@@ -573,7 +724,7 @@ class LinkedInApplicant:
                 else:
                     try:
                         current_content = await page.inner_text(
-                            '.jobs-easy-apply-modal, [role="dialog"]'
+                            self.MODAL_CONTENT_SELECTOR
                         )
                     except Exception:
                         current_content = ""
@@ -584,7 +735,7 @@ class LinkedInApplicant:
 
                     try:
                         new_content = await page.inner_text(
-                            '.jobs-easy-apply-modal, [role="dialog"]'
+                            self.MODAL_CONTENT_SELECTOR
                         )
                     except Exception:
                         new_content = ""
@@ -595,6 +746,8 @@ class LinkedInApplicant:
                             f"Review did not advance form (attempt {review_retries})"
                         )
                         await self.fill_form_fields(page)
+                        if self._pending_fields:
+                            return "pending"
                         continue
                     else:
                         review_retries = 0
@@ -623,12 +776,14 @@ class LinkedInApplicant:
                     if error_texts:
                         self.logger.warning(f"Validation errors on form: {error_texts}")
                         await self.fill_form_fields(page)
+                        if self._pending_fields:
+                            return "pending"
                         await self._human_delay(1.0, 2.0)
 
                 # Capture content before clicking to detect if we advanced
                 try:
                     current_content = await page.inner_text(
-                        '.jobs-easy-apply-modal, [role="dialog"]'
+                        self.MODAL_CONTENT_SELECTOR
                     )
                 except Exception:
                     current_content = ""
@@ -639,7 +794,7 @@ class LinkedInApplicant:
 
                 try:
                     new_content = await page.inner_text(
-                        '.jobs-easy-apply-modal, [role="dialog"]'
+                        self.MODAL_CONTENT_SELECTOR
                     )
                 except Exception:
                     new_content = ""
@@ -647,27 +802,32 @@ class LinkedInApplicant:
                 if new_content and new_content == current_content:
                     self.logger.warning("Form did not advance — likely a validation error")
                     await self._take_screenshot(page, f"stuck_form_step{step}")
-                    return False
+                    return "failed"
 
                 step += 1
                 continue
 
             self.logger.error(f"No Next/Review/Submit button found on step {step + 1}")
             await self._take_screenshot(page, f"no_button_step{step}")
-            return False
+            return "failed"
 
         self.logger.error(f"Exceeded {max_steps} form steps")
-        return False
+        return "failed"
 
     # ── Single job application ─────────────────────────────────────────────────
 
-    async def apply_to_job(self, job: Job) -> bool:
-        """Full apply flow for one job. Returns True on success."""
+    async def apply_to_job(self, job: Job) -> str:
+        """
+        Full apply flow for one job. Returns "applied", "pending_questions",
+        "failed", or "closed".
+        """
+        self._pending_fields = []  # reset per-job accumulator
+
         if db.get_daily_application_count() >= config.MAX_APPLICATIONS_PER_DAY:
             self.logger.warning(
                 f"Daily cap ({config.MAX_APPLICATIONS_PER_DAY}) reached — skipping {job.title}"
             )
-            return False
+            return "failed"
 
         page = await self.context.new_page()
         try:
@@ -676,7 +836,11 @@ class LinkedInApplicant:
             nav_result = await self.navigate_to_job(page, job.url)
             if nav_result != "open":
                 db.update_job_status(job.id, nav_result or "closed")
-                return False
+                if nav_result == "closed":
+                    return "closed"
+                if nav_result == "applied":
+                    return "applied"
+                return "failed"
 
             # Dismiss LinkedIn messaging overlay if open
             try:
@@ -697,23 +861,35 @@ class LinkedInApplicant:
             if easy_apply_result == "external":
                 db.update_job_status(job.id, "manual")
                 self.logger.info(f"Marked as manual apply: {job.title} @ {job.company}")
-                return False
+                return "failed"
             elif not easy_apply_result:
                 await self._take_screenshot(page, f"no_easyapply_{job.id}")
-                return False
+                return "failed"
 
             # Upload resume if available
             if job.resume_path and job.resume_path != "failed":
                 await self.upload_resume(page, job.resume_path)
 
-            if not await self.handle_form_steps(page):
+            step_outcome = await self.handle_form_steps(page)
+
+            if step_outcome == "pending":
+                self.logger.warning(
+                    f"Job {job.id}: {len(self._pending_fields)} required field(s) unresolved — "
+                    f"parking as pending_questions"
+                )
+                await self._take_screenshot(page, f"pending_{job.id}")
+                await self._dismiss_modal(page)
+                db.save_pending_questions(job.id, self._pending_fields)
+                return "pending_questions"
+
+            if step_outcome != "submitted":
                 await self._take_screenshot(page, f"form_fail_{job.id}")
                 db.update_job_status(job.id, "failed")
-                return False
+                return "failed"
 
             db.update_job_applied(job.id)
             self.logger.info(f"✓ Applied: {job.title} @ {job.company}")
-            return True
+            return "applied"
 
         except RuntimeError as exc:
             # CAPTCHA — caller decides whether to stop the batch
@@ -723,7 +899,7 @@ class LinkedInApplicant:
             self.logger.error(f"Apply failed for job {job.id}: {exc}")
             await self._take_screenshot(page, f"error_{job.id}")
             db.update_job_status(job.id, "failed")
-            return False
+            return "failed"
         finally:
             await page.close()
 
@@ -731,7 +907,7 @@ class LinkedInApplicant:
 
     async def apply_batch(self, jobs: list[Job]) -> dict:
         """Apply to a list of jobs sequentially with human-like gaps between them."""
-        results = {"applied": 0, "failed": 0, "skipped": 0}
+        results = {"applied": 0, "pending_questions": 0, "failed": 0, "skipped": 0}
         consecutive_failures = 0
 
         for i, job in enumerate(jobs):
@@ -746,13 +922,12 @@ class LinkedInApplicant:
                 break
 
             try:
-                success = await self.apply_to_job(job)
-                if success:
-                    results["applied"] += 1
-                    consecutive_failures = 0
-                else:
-                    results["failed"] += 1
+                outcome = await self.apply_to_job(job)
+                results[outcome] = results.get(outcome, 0) + 1
+                if outcome == "failed":
                     consecutive_failures += 1
+                else:
+                    consecutive_failures = 0   # reset on non-failure outcomes
             except RuntimeError:
                 # CAPTCHA — abort everything
                 self.logger.error("CAPTCHA encountered — aborting batch")
@@ -769,7 +944,11 @@ class LinkedInApplicant:
                 self.logger.info(f"Waiting {gap:.0f}s before next application…")
                 await asyncio.sleep(gap)
 
-        self.logger.info(f"Batch complete — {results}")
+        self.logger.info(
+            f"Batch complete — applied:{results['applied']} "
+            f"pending:{results['pending_questions']} "
+            f"failed:{results['failed']} skipped:{results['skipped']}"
+        )
         return results
 
     # ── Teardown ───────────────────────────────────────────────────────────────
@@ -788,6 +967,10 @@ if __name__ == "__main__":
     import sys
 
     async def main() -> None:
+        # QAResolver (constructed in LinkedInApplicant.__init__) reads the
+        # qa_bank table — make sure it exists even when this script is run
+        # standalone, without the dashboard having initialized the DB first.
+        db.init_db()
         applicant = LinkedInApplicant()
 
         if "--single" in sys.argv:
@@ -801,8 +984,14 @@ if __name__ == "__main__":
                 return
             console.print(f"[bold]Applying to:[/bold] {job.title} @ {job.company}")
             await applicant.setup_browser()
-            success = await applicant.apply_to_job(job)
-            console.print("[green]✓ Applied![/green]" if success else "[red]✗ Failed[/red]")
+            outcome = await applicant.apply_to_job(job)
+            outcome_colors = {
+                "applied":           "[green]Applied![/green]",
+                "pending_questions": "[yellow]Pending — questions need your answers in the dashboard[/yellow]",
+                "failed":            "[red]Failed — check logs[/red]",
+                "closed":            "[dim]Closed — job no longer accepting applications[/dim]",
+            }
+            console.print(outcome_colors.get(outcome, f"[white]Unknown outcome: {outcome}[/white]"))
         else:
             jobs = db.get_approved_jobs_with_resume()
             if not jobs:
@@ -811,9 +1000,10 @@ if __name__ == "__main__":
             console.print(f"[bold]Found {len(jobs)} job(s) ready to apply[/bold]")
             await applicant.setup_browser()
             results = await applicant.apply_batch(jobs)
-            console.print(f"[green]Applied:  {results['applied']}[/green]")
-            console.print(f"[red]Failed:   {results['failed']}[/red]")
-            console.print(f"[yellow]Skipped:  {results['skipped']}[/yellow]")
+            console.print(f"[green]Applied: {results['applied']}[/green]")
+            console.print(f"[yellow]Pending questions: {results['pending_questions']}[/yellow]")
+            console.print(f"[red]Failed: {results['failed']}[/red]")
+            console.print(f"[dim]Skipped: {results['skipped']}[/dim]")
 
         await applicant.close()
 
