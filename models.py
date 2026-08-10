@@ -41,6 +41,28 @@ class Job(BaseModel):
         except Exception:
             return False
 
+    @property
+    def is_aging(self) -> bool:
+        """
+        True if this job is approaching auto-purge (past JOB_AGE_WARNING_DAYS
+        but not yet past MAX_JOB_AGE_DAYS) and is in a purgeable (non-protected)
+        status. Independent from is_likely_expired — a job can be both, either,
+        or neither; a stale post can still be a perfectly valid application.
+        """
+        if not self.created_at:
+            return False
+        try:
+            import config
+            if self.status in config.AGE_PURGE_PROTECTED_STATUSES:
+                return False
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            age = now - self.created_at.replace(tzinfo=None)
+            warning = timedelta(days=config.JOB_AGE_WARNING_DAYS)
+            purge = timedelta(days=config.MAX_JOB_AGE_DAYS)
+            return warning <= age < purge
+        except Exception:
+            return False
+
 
 class Application(BaseModel):
     id: Optional[int] = None
@@ -135,4 +157,59 @@ class MasterResume(BaseModel):
             and not self.skills.tools
         ):
             raise ValueError("Skills section cannot be entirely empty")
+        return self
+
+
+class QABankEntry(BaseModel):
+    id: int
+    question_norm: str
+    question_raw: str
+    field_type: str
+    options: Optional[list[str]] = None   # deserialized from options_json by db helpers
+    answer: str
+    source: str                           # 'config' | 'ai' | 'manual'
+    confidence: Optional[float] = None
+    use_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class PendingAnswer(BaseModel):
+    id: int
+    job_id: int
+    question_raw: str
+    question_norm: str
+    field_type: str
+    options: Optional[list[str]] = None   # deserialized from options_json by db helpers
+    ai_suggested_answer: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    resolved: bool = False
+    created_at: datetime
+
+
+class SavedSearch(BaseModel):
+    """A saved LinkedIn job search config. Titles are stored JSON-serialized
+    in the DB but exposed as a proper list on the model."""
+    id: int | None = None
+    name: str
+    titles: list[str]
+    geo_id: str
+    geo_label: str
+    remote_only: bool = False
+    easy_apply_only: bool = True
+    max_results: int = 25
+    enabled: bool = True
+    last_run_at: datetime | None = None
+    created_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _validate(self):
+        if not self.name.strip():
+            raise ValueError("name cannot be empty")
+        if not self.titles or all(not t.strip() for t in self.titles):
+            raise ValueError("at least one title required")
+        if not self.geo_id.strip():
+            raise ValueError("geo_id cannot be empty")
+        if self.max_results < 1 or self.max_results > 100:
+            raise ValueError("max_results must be between 1 and 100")
         return self
