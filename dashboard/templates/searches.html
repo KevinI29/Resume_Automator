@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Searches — Job Auto</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+    --bg-primary:   #0f1117;
+    --bg-card:      #1a1d27;
+    --bg-sidebar:   #0d0f1a;
+    --border:       #1e2130;
+    --border-hover: #2a2d3e;
+    --accent:       #6366f1;
+    --success:      #22c55e;
+    --warning:      #eab308;
+    --danger:       #ef4444;
+    --info:         #3b82f6;
+    --orange:       #f97316;
+    --text-primary: #f1f5f9;
+    --text-muted:   #64748b;
+    --text-dim:     #374151;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font-family: inherit; }
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* ---- TOP BAR ---- */
+#top-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 64px;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 24px;
+}
+#logo {
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.page-nav { display: flex; align-items: center; gap: 18px; }
+.nav-link { font-size: 13px; color: var(--text-muted); }
+.nav-link:hover { color: var(--text-primary); }
+.nav-link--active { color: var(--accent); font-weight: 500; }
+
+/* ---- PAGE AREA ---- */
+#page-area {
+    margin-top: 64px;
+    padding: 28px 20px 60px;
+    min-height: calc(100vh - 64px);
+    box-sizing: border-box;
+}
+#page-container {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ---- SECTIONS ---- */
+.section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+}
+.section-header {
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 16px 0;
+}
+.section-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+.section-header-row .section-header { margin-bottom: 0; }
+
+/* ---- FORM INPUTS ---- */
+.form-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.form-input {
+    width: 100%;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+.form-input:focus { border-color: var(--accent); }
+
+.field-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.field-group { display: flex; flex-direction: column; }
+.field-group:last-child { margin-bottom: 0; }
+
+/* ---- TOGGLE ROWS (checkboxes) ---- */
+.toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 5px 4px;
+}
+.toggle-row:hover { color: var(--text-primary); }
+.toggle-row input[type="checkbox"] { accent-color: var(--accent); }
+.toggle-stack { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+
+/* ---- CHIP INPUT (titles) — same pattern as resume.html's skill tags ---- */
+.skill-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+.skill-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.skill-tag .tag-text { line-height: 1; }
+.skill-tag .tag-remove {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    background: none;
+    border: none;
+}
+.skill-tag .tag-remove:hover { color: var(--danger); }
+.skill-add-input {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    padding: 2px 6px;
+    outline: none;
+    flex: 1;
+    min-width: 120px;
+}
+.skill-add-input::placeholder { color: var(--text-muted); }
+
+/* ---- Static (read-only) chips on search cards ---- */
+.search-card-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-static {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 9px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+/* ---- BADGES (reused from index.html) ---- */
+.card-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: inline-block;
+}
+.badge--easy   { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+.badge--remote { background: color-mix(in srgb, var(--info) 20%, transparent);    color: var(--info); }
+.badge--geo    { background: var(--border); color: var(--text-muted); text-transform: none; letter-spacing: normal; }
+
+/* ---- BUTTONS ---- */
+.btn {
+    border: none;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    transition: opacity 0.12s ease;
+}
+.btn:hover:not(:disabled) { opacity: 0.85; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-view { background: color-mix(in srgb, var(--text-muted) 15%, transparent); color: var(--text-muted); }
+.btn-view:hover:not(:disabled) { color: var(--text-primary); }
+.btn-skip { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger); }
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-outline {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-outline:hover { background: rgba(99,102,241,0.1); }
+
+/* ---- SEARCH CARDS ---- */
+#search-cards { display: flex; flex-direction: column; gap: 12px; }
+.search-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.search-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.search-card-name { font-size: 14px; font-weight: 600; }
+.search-card-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+}
+.search-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---- EMPTY STATE ---- */
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+.empty-icon { font-size: 40px; margin-bottom: 10px; }
+.empty-title { font-size: 15px; color: var(--text-primary); margin-bottom: 6px; }
+.empty-message { font-size: 13px; }
+
+/* ---- MODAL (structure reused from index.html's qabank modal) ---- */
+#search-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 300;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+#search-modal-backdrop.open { display: flex; }
+#search-modal {
+    width: min(560px, 92vw);
+    max-height: 85vh;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#search-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.detail-title { font-size: 15px; font-weight: 600; }
+.detail-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+}
+.detail-close-btn:hover { color: var(--text-primary); }
+#search-modal-body {
+    overflow-y: auto;
+    padding: 16px 20px 20px;
+}
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+/* ---- TOASTS (identical to index.html) ---- */
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.toast {
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #fff;
+    min-width: 280px;
+    max-width: 400px;
+    animation: slideIn 0.2s ease;
+}
+.toast--success { background: #14532d; border: 1px solid var(--success); }
+.toast--error   { background: #450a0a; border: 1px solid var(--danger); }
+.toast--info    { background: #1e1b4b; border: 1px solid var(--accent); }
+
+@keyframes slideIn {
+    from { transform: translateX(40px); opacity: 0; }
+    to   { transform: translateX(0);   opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ──────────────────────────────────────────────────────── -->
+<div id="top-bar">
+  <div id="logo">Job Auto</div>
+  <nav class="page-nav">
+    <a class="nav-link" href="/">📋 Jobs</a>
+    <a class="nav-link" href="/resume">📝 Resume</a>
+    <a class="nav-link nav-link--active" href="/searches">🔍 Searches</a>
+  </nav>
+</div>
+
+<!-- Static config values reach JS via data-* attributes here, never templated inside the <script> block below -->
+<div id="app-config"
+     data-max-results-min="1"
+     data-max-results-max="100"
+     data-default-max-results="25"></div>
+
+<!-- ── Page area ────────────────────────────────────────────────────── -->
+<div id="page-area">
+  <div id="page-container">
+
+    <div class="section" id="section-discover">
+      <div class="section-header">Discover (one-off search)</div>
+      <div class="field-grid-2">
+        <div class="field-group">
+          <label class="form-label">Titles</label>
+          <div class="skill-tag-row" id="discover-titles">
+            <input class="skill-add-input" type="text" placeholder="type + Enter or comma..."
+                   onkeydown="handleSkillInput(event, 'discover-titles')">
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="form-label">City</label>
+          <select class="form-input" id="discover-geo"></select>
+        </div>
+      </div>
+      <div class="toggle-stack">
+        <label class="toggle-row">
+          <input type="checkbox" id="discover-remote-only">
+          <span>Remote only</span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="discover-easy-apply" checked>
+          <span>Easy Apply only</span>
+        </label>
+      </div>
+      <div class="field-group" style="max-width:200px;margin-bottom:16px;">
+        <label class="form-label">Max results</label>
+        <input class="form-input" type="number" id="discover-max-results" min="1" max="100" value="25">
+      </div>
+      <button class="btn-primary" onclick="runDiscover()">Discover</button>
+    </div>
+
+    <div class="section" id="section-saved-searches">
+      <div class="section-header-row">
+        <div class="section-header">Saved Searches</div>
+        <button class="btn-outline" onclick="openSearchModal()">+ New Search</button>
+      </div>
+      <div id="search-cards">
+        <div class="empty-state">
+          <div class="empty-icon">⏳</div>
+          <div class="empty-title">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Edit modal ───────────────────────────────────────────────────── -->
+<div id="search-modal-backdrop" onclick="if(event.target===this) closeSearchModal()">
+  <div id="search-modal">
+    <div id="search-modal-header">
+      <div class="detail-title" id="search-modal-title">New Search</div>
+      <button class="detail-close-btn" onclick="closeSearchModal()">×</button>
+    </div>
+    <div id="search-modal-body">
+      <div class="field-group" style="margin-bottom:16px;">
+        <label class="form-label">Name</label>
+        <input class="form-input" type="text" id="modal-name" placeholder="e.g. Bengaluru Backend" oninput="markDirty()">
+      </div>
+      <div class="field-group" style="margin-bottom:16px;">
+        <label class="form-label">Titles</label>
+        <div class="skill-tag-row" id="modal-titles">
+          <input class="skill-add-input" type="text" placeholder="type + Enter or comma..."
+                 onkeydown="handleSkillInput(event, 'modal-titles')">
+        </div>
+      </div>
+      <div class="field-grid-2">
+        <div class="field-group">
+          <label class="form-label">City</label>
+          <select class="form-input" id="modal-geo" onchange="markDirty()"></select>
+        </div>
+        <div class="field-group">
+          <label class="form-label">Max results</label>
+          <input class="form-input" type="number" id="modal-max-results" min="1" max="100" value="25" oninput="markDirty()">
+        </div>
+      </div>
+      <div class="toggle-stack">
+        <label class="toggle-row">
+          <input type="checkbox" id="modal-remote-only" onchange="markDirty()">
+          <span>Remote only</span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="modal-easy-apply" checked onchange="markDirty()">
+          <span>Easy Apply only</span>
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="modal-enabled" checked onchange="markDirty()">
+          <span>Enabled</span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-outline" onclick="closeSearchModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveSearch()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toasts ───────────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<script>
+/* ── Toast (identical to index.html) ────────────────────────────────── */
+function showToast(message, type = 'info', duration) {
+    if (duration == null) duration = type === 'error' ? 5000 : 3000;
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+/* ── Helpers (copied from index.html) ───────────────────────────────── */
+function esc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function timeAgo(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr.replace(' ', 'T'));
+    const secs = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (secs < 60) return 'Just now';
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+    if (secs < 604800) return `${Math.floor(secs / 86400)}d ago`;
+    return `${Math.floor(secs / 604800)}w ago`;
+}
+
+/* ── Chip input — same pattern as resume.html's skill tags, copied
+   verbatim rather than re-invented (generic: works for any container) ── */
+function addSkillTag(container, text) {
+    const tag = document.createElement('span');
+    tag.className = 'skill-tag';
+    const textNode = document.createElement('span');
+    textNode.className = 'tag-text';
+    textNode.textContent = text;
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'tag-remove';
+    removeBtn.textContent = '×';
+    removeBtn.onclick = () => { tag.remove(); markDirty(); };
+    tag.appendChild(textNode);
+    tag.appendChild(removeBtn);
+    const input = container.querySelector('.skill-add-input');
+    container.insertBefore(tag, input);
+}
+
+function handleSkillInput(event, containerId) {
+    if (event.key === 'Enter' || event.key === ',') {
+        event.preventDefault();
+        const input = event.target;
+        const raw = input.value;
+        const skills = raw.split(',').map(s => s.trim()).filter(s => s !== '');
+        const container = document.getElementById(containerId);
+        skills.forEach(skill => addSkillTag(container, skill));
+        input.value = '';
+        if (skills.length) markDirty();
+    }
+}
+
+function collectSkillTags(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.skill-tag .tag-text'))
+        .map(el => el.textContent.trim())
+        .filter(t => t !== '');
+}
+
+/* ── State ───────────────────────────────────────────────────────────── */
+let allSearches = [];
+let editingSearchId = null;
+let modalDirty = false;
+
+function markDirty() { modalDirty = true; }
+
+/* ── Load geos + searches ────────────────────────────────────────────── */
+async function loadGeos() {
+    try {
+        const response = await fetch('/api/searches/geos');
+        const geos = await response.json();
+        ['discover-geo', 'modal-geo'].forEach(id => {
+            const select = document.getElementById(id);
+            select.innerHTML = geos.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+        });
+    } catch (err) {
+        showToast('Failed to load cities: ' + err.message, 'error');
+    }
+}
+
+async function loadSearches() {
+    try {
+        const response = await fetch('/api/searches');
+        allSearches = await response.json();
+        renderSearchCards();
+    } catch (err) {
+        showToast('Failed to load searches: ' + err.message, 'error');
+    }
+}
+
+/* ── Render saved search cards ───────────────────────────────────────── */
+function renderSearchCards() {
+    const container = document.getElementById('search-cards');
+    if (allSearches.length === 0) {
+        container.innerHTML = `
+        <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-title">No saved searches yet</div>
+            <div class="empty-message">Click "+ New Search" to save one, or use Discover above for a one-off search.</div>
+        </div>`;
+        return;
+    }
+    container.innerHTML = allSearches.map(buildSearchCardHTML).join('');
+}
+
+function buildSearchCardHTML(s) {
+    const titleChips = s.titles.map(t => `<span class="chip-static">${esc(t)}</span>`).join('');
+    const remoteBadge = s.remote_only ? '<span class="badge badge--remote">Remote</span>' : '';
+    const easyBadge = s.easy_apply_only ? '<span class="badge badge--easy">Easy Apply</span>' : '';
+    const lastRun = s.last_run_at ? timeAgo(s.last_run_at) : 'Never';
+
+    return `
+    <div class="search-card">
+        <div class="search-card-header">
+            <span class="search-card-name">${esc(s.name)}</span>
+            <label class="toggle-row" style="padding:0;">
+                <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSearch(${s.id})">
+                <span>${s.enabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+        </div>
+        <div class="search-card-chips">${titleChips}</div>
+        <div class="card-badges">
+            <span class="badge badge--geo">📍 ${esc(s.geo_label)}</span>
+            ${remoteBadge}${easyBadge}
+        </div>
+        <div class="search-card-meta">Max results: ${s.max_results} · Last run: ${lastRun}</div>
+        <div class="search-card-actions">
+            <button class="btn btn-view" onclick="runSearchNow(${s.id})">▷ Run Now</button>
+            <button class="btn btn-view" onclick="openSearchModal(${s.id})">Edit</button>
+            <button class="btn btn-skip" onclick="deleteSearchConfirm(${s.id})">Delete</button>
+        </div>
+    </div>`;
+}
+
+/* ── Toggle / run / delete ───────────────────────────────────────────── */
+async function toggleSearch(id) {
+    try {
+        const response = await fetch(`/api/searches/${id}/toggle`, { method: 'POST' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        await loadSearches();
+    } catch (err) {
+        showToast('Toggle failed: ' + err.message, 'error');
+        await loadSearches();
+    }
+}
+
+async function runSearchNow(id) {
+    try {
+        const response = await fetch(`/api/searches/${id}/run`, { method: 'POST' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        showToast('Search started — new jobs will appear on the Jobs page shortly', 'info', 5000);
+    } catch (err) {
+        showToast('Run failed: ' + err.message, 'error');
+    }
+}
+
+async function deleteSearchConfirm(id) {
+    const s = allSearches.find(x => x.id === id);
+    if (!confirm(`Delete search "${s ? s.name : id}"? This cannot be undone. Jobs already found are not affected.`)) return;
+    try {
+        const response = await fetch(`/api/searches/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        showToast('Search deleted', 'success');
+        await loadSearches();
+    } catch (err) {
+        showToast('Delete failed: ' + err.message, 'error');
+    }
+}
+
+/* ── Edit modal ───────────────────────────────────────────────────────── */
+function openSearchModal(searchId = null) {
+    editingSearchId = searchId;
+    document.getElementById('search-modal-title').textContent = searchId ? 'Edit Search' : 'New Search';
+
+    const titlesContainer = document.getElementById('modal-titles');
+    titlesContainer.querySelectorAll('.skill-tag').forEach(t => t.remove());
+
+    const cfg = document.getElementById('app-config').dataset;
+
+    if (searchId) {
+        const s = allSearches.find(x => x.id === searchId);
+        if (!s) return;
+        document.getElementById('modal-name').value = s.name;
+        s.titles.forEach(t => addSkillTag(titlesContainer, t));
+        document.getElementById('modal-geo').value = s.geo_label;
+        document.getElementById('modal-max-results').value = s.max_results;
+        document.getElementById('modal-remote-only').checked = s.remote_only;
+        document.getElementById('modal-easy-apply').checked = s.easy_apply_only;
+        document.getElementById('modal-enabled').checked = s.enabled;
+    } else {
+        document.getElementById('modal-name').value = '';
+        document.getElementById('modal-max-results').value = cfg.defaultMaxResults;
+        document.getElementById('modal-remote-only').checked = false;
+        document.getElementById('modal-easy-apply').checked = true;
+        document.getElementById('modal-enabled').checked = true;
+        if (document.getElementById('modal-geo').options.length) {
+            document.getElementById('modal-geo').selectedIndex = 0;
+        }
+    }
+
+    document.getElementById('search-modal-backdrop').classList.add('open');
+    modalDirty = false; // prefill above flips it via addSkillTag — reset after, not before
+}
+
+function closeSearchModal() {
+    if (modalDirty && !confirm('You have unsaved changes. Discard them?')) return;
+    document.getElementById('search-modal-backdrop').classList.remove('open');
+    editingSearchId = null;
+    modalDirty = false;
+}
+
+async function saveSearch() {
+    const name = document.getElementById('modal-name').value.trim();
+    const titles = collectSkillTags('modal-titles');
+    const geoLabel = document.getElementById('modal-geo').value;
+    const maxResults = parseInt(document.getElementById('modal-max-results').value, 10);
+    const remoteOnly = document.getElementById('modal-remote-only').checked;
+    const easyApplyOnly = document.getElementById('modal-easy-apply').checked;
+    const enabled = document.getElementById('modal-enabled').checked;
+
+    if (!name) {
+        showToast('Name is required', 'error');
+        return;
+    }
+    if (titles.length === 0) {
+        showToast('At least one title is required', 'error');
+        return;
+    }
+
+    const payload = {
+        name, titles, geo_label: geoLabel, remote_only: remoteOnly,
+        easy_apply_only: easyApplyOnly, max_results: maxResults, enabled,
+    };
+
+    try {
+        const url = editingSearchId ? `/api/searches/${editingSearchId}` : '/api/searches';
+        const method = editingSearchId ? 'PUT' : 'POST';
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: response.statusText }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : `HTTP ${response.status}`);
+        }
+        modalDirty = false;
+        document.getElementById('search-modal-backdrop').classList.remove('open');
+        showToast(editingSearchId ? 'Search updated' : 'Search created', 'success');
+        await loadSearches();
+    } catch (err) {
+        showToast('Save failed: ' + err.message, 'error', 5000);
+    }
+}
+
+/* ── Discover (one-off, unsaved) ──────────────────────────────────────── */
+async function runDiscover() {
+    const titles = collectSkillTags('discover-titles');
+    const geoLabel = document.getElementById('discover-geo').value;
+    const maxResults = parseInt(document.getElementById('discover-max-results').value, 10);
+    const remoteOnly = document.getElementById('discover-remote-only').checked;
+    const easyApplyOnly = document.getElementById('discover-easy-apply').checked;
+
+    if (titles.length === 0) {
+        showToast('At least one title is required', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/searches/discover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                titles, geo_label: geoLabel, remote_only: remoteOnly,
+                easy_apply_only: easyApplyOnly, max_results: maxResults,
+            }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: response.statusText }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : `HTTP ${response.status}`);
+        }
+        showToast("Discovering jobs, they'll appear on the Jobs page shortly", 'info', 5000);
+        document.getElementById('discover-titles').querySelectorAll('.skill-tag').forEach(t => t.remove());
+    } catch (err) {
+        showToast('Discover failed: ' + err.message, 'error', 5000);
+    }
+}
+
+/* ── Boot ─────────────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+    const cfg = document.getElementById('app-config').dataset;
+    document.getElementById('discover-max-results').value = cfg.defaultMaxResults;
+    await loadGeos();
+    await loadSearches();
+});
+</script>
+</body>
+</html>

@@ -375,6 +375,13 @@ button, input, select { font-family: inherit; }
     cursor: help;
 }
 
+.aging-icon {
+    font-size: 14px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    cursor: help;
+}
+
 .card-badges { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .badge {
@@ -441,6 +448,7 @@ button, input, select { font-family: inherit; }
 .btn-tailoring{ background: color-mix(in srgb, var(--accent) 20%, transparent);  color: var(--accent); cursor: default; }
 .btn-restore  { background: color-mix(in srgb, var(--text-muted) 15%, transparent); color: var(--text-primary); }
 .btn-manual   { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
+.btn-info     { background: color-mix(in srgb, var(--info) 22%, transparent);    color: var(--info); }
 
 .status-text {
     font-size: 11px;
@@ -552,6 +560,133 @@ button, input, select { font-family: inherit; }
     white-space: pre-wrap;
 }
 
+/* ── Answer panel (pending questions) ───────────────────────────────── */
+.form-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.form-input {
+    width: 100%;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+.form-input:focus { border-color: var(--accent); }
+
+.ai-suggestion-label {
+    display: block;
+    font-size: 11px;
+    color: var(--info);
+    margin-bottom: 6px;
+}
+
+.btn-primary {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+}
+.btn-primary:hover { opacity: 0.9; }
+
+/* ── QA bank modal ───────────────────────────────────────────────── */
+#qabank-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 300;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+#qabank-backdrop.open { display: flex; }
+
+#qabank-modal {
+    width: min(720px, 92vw);
+    max-height: 80vh;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#qabank-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+#qabank-modal-header .detail-title { font-size: 15px; }
+#qabank-modal-body {
+    overflow-y: auto;
+    padding: 8px 20px 20px;
+}
+
+.qabank-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.qabank-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+}
+.qabank-table td {
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text-primary);
+}
+.qabank-answer-cell { cursor: text; }
+.qabank-answer-cell input {
+    width: 100%;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+.qabank-source-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    text-transform: uppercase;
+}
+.qabank-source-badge--config { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.qabank-source-badge--ai     { background: color-mix(in srgb, var(--orange) 20%, transparent); color: var(--orange); }
+.qabank-source-badge--manual { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+.qabank-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+}
+.qabank-delete-btn:hover { color: var(--danger); }
+
 /* ── Toasts ──────────────────────────────────────────────────────── */
 #toast-container {
     position: fixed;
@@ -616,6 +751,9 @@ button, input, select { font-family: inherit; }
   <div class="filter-row" data-status="approved" onclick="setFilter('approved')">
     <span class="filter-name">Approved</span><span class="filter-count">—</span>
   </div>
+  <div class="filter-row" data-status="pending_questions" onclick="setFilter('pending_questions')">
+    <span class="filter-name">⏳ Needs Answers</span><span class="filter-count" id="count-pending-questions">0</span>
+  </div>
   <div class="filter-row" data-status="applied" onclick="setFilter('applied')">
     <span class="filter-name">Applied</span><span class="filter-count">—</span>
   </div>
@@ -652,13 +790,20 @@ button, input, select { font-family: inherit; }
   <button class="maint-btn maint-btn--danger" id="btn-purge" onclick="triggerPurge()">
     Purge Expired (<span id="purge-count">0</span>)
   </button>
+  <button class="maint-btn maint-btn--danger" id="btn-purge-old" data-max-age="{{ config.MAX_JOB_AGE_DAYS }}" onclick="triggerPurgeOld()">
+    Purge Old Jobs (<span id="purge-old-count">0</span>)
+  </button>
   <button class="maint-btn" id="btn-restore" onclick="triggerRestoreAll()">
     Restore Skipped (<span id="restore-count">0</span>)
+  </button>
+  <button class="maint-btn" onclick="openQABankModal()">
+    🗂 Manage Saved Answers
   </button>
 
   <div class="nav-section">
     <a class="nav-link nav-link--active" href="/">📋 Jobs</a>
     <a class="nav-link" href="/resume">📝 Resume</a>
+    <a class="nav-link" href="/searches">🔍 Searches</a>
   </div>
 </aside>
 
@@ -682,6 +827,18 @@ button, input, select { font-family: inherit; }
     <button class="detail-close-btn" onclick="closeDetail()">×</button>
   </div>
   <div id="detail-body"></div>
+</div>
+
+
+<!-- ── QA bank modal ────────────────────────────────────────────────── -->
+<div id="qabank-backdrop" onclick="if(event.target===this) closeQABankModal()">
+  <div id="qabank-modal">
+    <div id="qabank-modal-header">
+      <div class="detail-title">🗂 Manage Saved Answers</div>
+      <button class="detail-close-btn" onclick="closeQABankModal()">×</button>
+    </div>
+    <div id="qabank-modal-body">Loading…</div>
+  </div>
 </div>
 
 <!-- ── Toasts ───────────────────────────────────────────────────────── -->
@@ -810,13 +967,14 @@ function renderStats(stats) {
 
 function renderSidebarCounts(stats) {
     const map = {
-        '':         stats.total,
-        'new':      stats.new,
-        'approved': stats.approved,
-        'applied':  stats.applied,
-        'manual':   stats.manual,
-        'skipped':  stats.skipped,
-        'closed':   stats.closed,
+        '':                  stats.total,
+        'new':               stats.new,
+        'approved':          stats.approved,
+        'pending_questions': stats.pending_questions,
+        'applied':           stats.applied,
+        'manual':            stats.manual,
+        'skipped':           stats.skipped,
+        'closed':            stats.closed,
     };
     document.querySelectorAll('.filter-row').forEach(row => {
         const status = row.dataset.status;
@@ -828,10 +986,13 @@ function renderSidebarCounts(stats) {
 function renderMaintenanceCounts(stats) {
     const purgeCount = (stats.closed || 0) + (stats.failed || 0);
     const restoreCount = stats.skipped || 0;
+    const purgeOldCount = stats.purgeable_old || 0;
     document.getElementById('purge-count').textContent = purgeCount;
     document.getElementById('restore-count').textContent = restoreCount;
+    document.getElementById('purge-old-count').textContent = purgeOldCount;
     document.getElementById('btn-purge').style.display = purgeCount === 0 ? 'none' : 'block';
     document.getElementById('btn-restore').style.display = restoreCount === 0 ? 'none' : 'block';
+    document.getElementById('btn-purge-old').style.display = purgeOldCount === 0 ? 'none' : 'block';
 }
 
 /* ── Filters, sort, search, toggles ──────────────────────────────── */
@@ -897,6 +1058,7 @@ function buildEmptyState() {
         '':         'No jobs in the database. Run the pipeline to scrape some.',
         'new':      'No new jobs. Run the pipeline to scrape more.',
         'approved': 'No approved jobs. Approve some from the New tab.',
+        'pending_questions': 'No jobs waiting on answers. Nice.',
         'applied':  'No applications yet. Apply to approved jobs using Apply All.',
         'skipped':  'No skipped jobs. Restore skipped jobs using Restore Skipped.',
         'manual':   'No manual jobs found.',
@@ -930,6 +1092,9 @@ function buildCardHTML(job) {
     const expiryIcon = job.is_likely_expired
         ? `<span class="expiry-icon" title="Scraped ${timeAgo(job.created_at)} — may be expired. Click Validate to check.">⚠</span>`
         : '';
+    const agingIcon = job.is_aging
+        ? `<span class="aging-icon" title="Will be auto-purged in ≤2 days">⌛</span>`
+        : '';
     const closedClass = job.status === 'closed' ? ' job-card--closed' : '';
     const manualClass = job.status === 'manual' ? ' job-card--manual' : '';
 
@@ -941,7 +1106,7 @@ function buildCardHTML(job) {
                 <div class="card-title">${esc(job.title)}</div>
                 <div class="card-company">${esc(job.company)} · ${esc(job.location || '')}</div>
             </div>
-            ${expiryIcon}
+            ${expiryIcon}${agingIcon}
         </div>
         <div class="card-badges">${buildTypeBadge(job)}</div>
         <div class="fit-reason">${esc(job.fit_reason || '')}</div>
@@ -972,6 +1137,11 @@ function buildActionsHTML(job) {
             }
             return `<button class="btn btn-tailoring" disabled><span class="spin-icon">⟳</span> Tailoring...</button>${viewBtn}`;
         }
+
+        case 'pending_questions':
+            return `
+                <button class="btn btn-info" onclick="event.stopPropagation(); openAnswerPanel(${job.id})">✏ Answer Questions</button>
+                ${viewBtn}`;
 
         case 'applied':
             return `<span class="status-text status-text--success">✓ Applied ${timeAgo(job.applied_at)}</span>${viewBtn}`;
@@ -1278,6 +1448,20 @@ async function triggerPurge() {
     }
 }
 
+async function triggerPurgeOld() {
+    const purgeOldCount = Number(document.getElementById('purge-old-count').textContent) || 0;
+    const maxAge = document.getElementById('btn-purge-old').dataset.maxAge;
+    if (!confirm(`Delete ${purgeOldCount} jobs older than ${maxAge} days? This cannot be undone.`)) return;
+    try {
+        const data = await api('/api/jobs/purge-old', { method: 'POST' });
+        showToast(`Purged ${data.jobs_purged} jobs and cleaned ${data.files_deleted} files`, 'success');
+        fetchJobs();
+        fetchStats();
+    } catch (err) {
+        showToast('Purge failed: ' + err.message, 'error');
+    }
+}
+
 async function triggerRestoreAll() {
     try {
         const data = await api('/api/jobs/unskip-all', { method: 'POST' });
@@ -1339,6 +1523,226 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeDetail();
 });
 document.getElementById('detail-backdrop').addEventListener('click', closeDetail);
+
+/* ── Answer panel (pending questions) ────────────────────────────── */
+async function openAnswerPanel(jobId) {
+    try {
+        const [job, questions] = await Promise.all([
+            api(`/api/jobs/${jobId}`),
+            api(`/api/jobs/${jobId}/questions`),
+        ]);
+        renderAnswerPanel(job, questions);
+        document.getElementById('detail-panel').classList.add('open');
+        document.getElementById('detail-backdrop').classList.add('open');
+        state.selectedJobId = jobId;
+    } catch (e) {
+        showToast('Failed to load questions: ' + e.message, 'error', 5000);
+    }
+}
+
+function renderAnswerPanel(job, questions) {
+    const panel = document.getElementById('detail-body');
+
+    let questionsHTML = questions.map(q => {
+        const inputId = `pq-${q.id}`;
+        const checkId = `bank-${q.id}`;
+        const suggested = q.ai_suggested_answer || '';
+        const confPct = q.ai_confidence != null
+            ? Math.round(q.ai_confidence * 100) + '%'
+            : null;
+        const suggestedLabel = confPct
+            ? `<span class="ai-suggestion-label">AI suggested (${confPct} confidence) — verify before saving</span>`
+            : '';
+
+        let inputHTML;
+        if (q.options && q.options.length > 0) {
+            const opts = q.options.map(opt =>
+                `<option value="${esc(opt)}" ${opt === suggested ? 'selected' : ''}>${esc(opt)}</option>`
+            ).join('');
+            inputHTML = `<select class="form-input" id="${inputId}" data-pending-id="${q.id}">${opts}</select>`;
+        } else if (q.field_type === 'number') {
+            inputHTML = `<input class="form-input" type="number" id="${inputId}"
+                               data-pending-id="${q.id}" value="${esc(suggested)}">`;
+        } else {
+            inputHTML = `<input class="form-input" type="text" id="${inputId}"
+                               data-pending-id="${q.id}" value="${esc(suggested)}">`;
+        }
+
+        return `
+            <div class="pending-question" style="margin-bottom:16px;">
+                <div class="form-label" style="margin-bottom:6px;">${esc(q.question_raw)}</div>
+                ${suggestedLabel}
+                ${inputHTML}
+                <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--text-muted);">
+                    <input type="checkbox" id="${checkId}" data-pending-id="${q.id}"
+                           class="bank-save-checkbox" checked>
+                    Remember this answer for future applications
+                </label>
+            </div>
+        `;
+    }).join('');
+
+    if (questions.length === 0) {
+        questionsHTML = `<div class="detail-text" style="color:var(--text-muted);">No unanswered questions found for this job.</div>`;
+    }
+
+    panel.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <div>
+                <div style="font-size:16px;font-weight:600;">${esc(job.title)}</div>
+                <div style="font-size:13px;color:var(--text-muted);">${esc(job.company)}</div>
+            </div>
+        </div>
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;
+                    color:var(--text-muted);margin-bottom:12px;">
+            UNANSWERED QUESTIONS (${questions.length})
+        </div>
+        ${questionsHTML}
+        ${questions.length > 0 ? `
+        <div style="margin-top:20px;">
+            <button class="btn-primary" onclick="submitAnswers(${job.id})">
+                Save &amp; Continue
+            </button>
+        </div>` : ''}
+    `;
+}
+
+async function submitAnswers(jobId) {
+    const resolutions = [];
+    document.querySelectorAll('[data-pending-id]').forEach(input => {
+        if (input.tagName === 'INPUT' && input.type === 'checkbox') return;
+        const pendingId = parseInt(input.getAttribute('data-pending-id'));
+        const answer = input.value.trim();
+        const saveCheckbox = document.querySelector(
+            `.bank-save-checkbox[data-pending-id="${pendingId}"]`
+        );
+        const saveToBank = saveCheckbox ? saveCheckbox.checked : true;
+        resolutions.push({ pending_id: pendingId, answer, save_to_bank: saveToBank });
+    });
+
+    const unanswered = resolutions.filter(r => !r.answer);
+    if (unanswered.length > 0) {
+        showToast(`Please answer all ${unanswered.length} question(s)`, 'error', 4000);
+        return;
+    }
+
+    try {
+        await api(`/api/jobs/${jobId}/answers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resolutions }),
+        });
+        showToast('Answers saved — job is back in the Apply queue', 'success');
+        closeDetail();
+        fetchJobs();
+        fetchStats();
+    } catch (e) {
+        showToast('Failed to save answers: ' + e.message, 'error', 5000);
+    }
+}
+
+/* ── QA bank modal (Manage Saved Answers) ────────────────────────── */
+let qaBankCache = [];
+
+async function openQABankModal() {
+    document.getElementById('qabank-backdrop').classList.add('open');
+    document.getElementById('qabank-modal-body').innerHTML = 'Loading…';
+    try {
+        qaBankCache = await api('/api/qa-bank');
+        renderQABankTable();
+    } catch (e) {
+        document.getElementById('qabank-modal-body').innerHTML =
+            `<div class="detail-text">Failed to load: ${esc(e.message)}</div>`;
+    }
+}
+
+function closeQABankModal() {
+    document.getElementById('qabank-backdrop').classList.remove('open');
+}
+
+function renderQABankTable() {
+    const body = document.getElementById('qabank-modal-body');
+    if (qaBankCache.length === 0) {
+        body.innerHTML = `<div class="detail-text" style="color:var(--text-muted);">No saved answers yet — they accumulate as you apply.</div>`;
+        return;
+    }
+
+    const rows = qaBankCache.map(e => {
+        const q = e.question_raw.length > 60 ? e.question_raw.slice(0, 60) + '…' : e.question_raw;
+        return `
+        <tr data-qa-id="${e.id}">
+            <td title="${esc(e.question_raw)}">${esc(q)}</td>
+            <td><span class="badge" style="text-transform:none;background:var(--border);color:var(--text-muted);">${esc(e.field_type)}</span></td>
+            <td class="qabank-answer-cell" ondblclick="editQABankAnswer(${e.id})" id="qabank-answer-${e.id}">${esc(e.answer)}</td>
+            <td><span class="qabank-source-badge qabank-source-badge--${esc(e.source)}">${esc(e.source)}</span></td>
+            <td>${e.use_count}</td>
+            <td><button class="qabank-delete-btn" onclick="deleteQABankAnswer(${e.id})" title="Delete">🗑</button></td>
+        </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+        <table class="qabank-table">
+            <thead>
+                <tr>
+                    <th>Question</th><th>Type</th><th>Answer (double-click to edit)</th>
+                    <th>Source</th><th>Uses</th><th></th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+function editQABankAnswer(qaId) {
+    const cell = document.getElementById(`qabank-answer-${qaId}`);
+    const entry = qaBankCache.find(e => e.id === qaId);
+    if (!cell || !entry) return;
+    const original = entry.answer;
+
+    cell.innerHTML = `<input type="text" value="${esc(original)}">`;
+    const input = cell.querySelector('input');
+    input.focus();
+    input.select();
+
+    const commit = async () => {
+        const newValue = input.value.trim();
+        if (!newValue || newValue === original) {
+            cell.textContent = original;
+            return;
+        }
+        try {
+            await api(`/api/qa-bank/${qaId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answer: newValue }),
+            });
+            entry.answer = newValue;
+            cell.textContent = newValue;
+            showToast('Answer updated', 'success');
+        } catch (e) {
+            cell.textContent = original;
+            showToast('Update failed: ' + e.message, 'error');
+        }
+    };
+
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') input.blur();
+        if (ev.key === 'Escape') { cell.textContent = original; }
+    });
+}
+
+async function deleteQABankAnswer(qaId) {
+    if (!confirm('Delete this saved answer? It will fall through to AI again next time.')) return;
+    try {
+        await api(`/api/qa-bank/${qaId}`, { method: 'DELETE' });
+        qaBankCache = qaBankCache.filter(e => e.id !== qaId);
+        renderQABankTable();
+        showToast('Answer deleted', 'success');
+    } catch (e) {
+        showToast('Delete failed: ' + e.message, 'error');
+    }
+}
 
 /* ── Boot ────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {

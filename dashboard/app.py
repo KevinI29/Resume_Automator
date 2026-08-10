@@ -12,10 +12,11 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.requests import Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 
 import config
 import db
-from models import MasterResume
+from models import MasterResume, SavedSearch
 
 logger = logging.getLogger("dashboard")
 
@@ -49,7 +50,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "config": config})
 
 
 # ── Jobs API ──────────────────────────────────────────────────────────────────
@@ -85,9 +86,29 @@ async def get_jobs(
         jobs = [j for j in jobs if j.fit_score is not None and j.fit_score >= min_score]
 
     return [
-        {**j.model_dump(), "is_likely_expired": j.is_likely_expired}
+        {**j.model_dump(), "is_likely_expired": j.is_likely_expired, "is_aging": j.is_aging}
         for j in jobs
     ]
+
+
+@app.post("/api/jobs/purge-old")
+async def purge_old_jobs_endpoint():
+    """
+    Delete jobs older than MAX_JOB_AGE_DAYS (excluding AGE_PURGE_PROTECTED_STATUSES)
+    and clean up their tailored resume PDFs.
+    Registered here — BEFORE /api/jobs/{job_id} — so "purge-old" is never
+    matched as a job_id path parameter.
+    """
+    try:
+        result = db.purge_old_jobs()
+        logger.info(
+            "Age-purge: removed %d jobs, %d resume files",
+            result["jobs_purged"], result["files_deleted"]
+        )
+        return result
+    except Exception as e:
+        logger.exception("Age-purge failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/jobs/{job_id}")
@@ -182,7 +203,7 @@ async def unskip_job(job_id: int):
         )
     db.unskip_job(job_id)
     updated = db.get_job_by_id(job_id)
-    return {**updated.model_dump(), "is_likely_expired": updated.is_likely_expired}
+    return {**updated.model_dump(), "is_likely_expired": updated.is_likely_expired, "is_aging": updated.is_aging}
 
 
 @app.get("/api/jobs/{job_id}/resume")
@@ -194,6 +215,64 @@ async def download_resume(job_id: int):
         raise HTTPException(status_code=404, detail="Resume not generated yet")
     filename = f"{job.company}_{job.title}_resume.pdf".replace(" ", "_")
     return FileResponse(job.resume_path, media_type="application/pdf", filename=filename)
+
+
+# ── Q&A resolver API ─────────────────────────────────────────────────────────
+
+@app.get("/api/jobs/{job_id}/questions")
+async def get_job_questions(job_id: int):
+    """Return unresolved pending questions for a job."""
+    job = db.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    questions = db.get_pending_questions_for_job(job_id)
+    return [q.model_dump() for q in questions]
+
+
+@app.post("/api/jobs/{job_id}/answers")
+async def submit_job_answers(job_id: int, body: dict):
+    """
+    body: {"resolutions": [{"pending_id": int, "answer": str, "save_to_bank": bool}]}
+    Resolves pending questions and sets job status back to 'approved'.
+    """
+    job = db.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "pending_questions":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job status is '{job.status}', expected 'pending_questions'"
+        )
+    resolutions = body.get("resolutions", [])
+    if not resolutions:
+        raise HTTPException(status_code=400, detail="No resolutions provided")
+    db.resolve_pending_questions(job_id, resolutions)
+    updated = db.get_job_by_id(job_id)
+    return {**updated.model_dump(), "is_likely_expired": updated.is_likely_expired, "is_aging": updated.is_aging}
+
+
+@app.get("/api/qa-bank")
+async def get_qa_bank():
+    """Return all qa_bank entries ordered by use_count desc."""
+    entries = db.get_qa_bank_all()
+    return [e.model_dump() for e in entries]
+
+
+@app.put("/api/qa-bank/{qa_id}")
+async def update_qa_bank_entry(qa_id: int, body: dict):
+    """body: {"answer": str} — edit a saved answer."""
+    answer = body.get("answer", "").strip()
+    if not answer:
+        raise HTTPException(status_code=400, detail="answer cannot be empty")
+    db.update_qa_answer(qa_id, answer)
+    return {"status": "ok", "qa_id": qa_id, "answer": answer}
+
+
+@app.delete("/api/qa-bank/{qa_id}")
+async def delete_qa_bank_entry(qa_id: int):
+    """Delete a qa_bank entry. It will fall through to AI again next time."""
+    db.delete_qa_answer(qa_id)
+    return {"status": "ok", "qa_id": qa_id}
 
 
 # ── Apply API ─────────────────────────────────────────────────────────────────
@@ -370,6 +449,154 @@ async def pipeline_status():
     return _pipeline_status
 
 
+# ── Searches API (Session 12) ────────────────────────────────────────────────
+# Route ordering is critical: fixed-path routes (discover, geos) MUST be
+# registered before the parameterized /api/searches/{search_id} routes below,
+# or FastAPI will try to parse "discover"/"geos" as an int search_id and 422 —
+# the exact foot-gun Session 11 had to watch for with /api/jobs/purge-old.
+
+@app.post("/api/searches/discover")
+async def discover_search(body: dict, background_tasks: BackgroundTasks):
+    """
+    One-off search — params come from the request body. Nothing is persisted
+    to the searches table; results land in `jobs` normally. Runs as a
+    background task; the frontend polls GET /api/stats to see new jobs land.
+    """
+    geo_label = body.get("geo_label", "")
+    geo_id = config.LINKEDIN_GEO_IDS.get(geo_label)
+    if geo_id is None:
+        raise HTTPException(status_code=400, detail=f"Unknown geo_label: {geo_label}")
+
+    try:
+        search = SavedSearch(
+            id=None,
+            name="Discover",
+            titles=body.get("titles", []),
+            geo_id=geo_id,
+            geo_label=geo_label,
+            remote_only=body.get("remote_only", False),
+            easy_apply_only=body.get("easy_apply_only", True),
+            max_results=body.get("max_results", 25),
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    background_tasks.add_task(_discover_background, search)
+    return {"status": "started"}
+
+
+@app.get("/api/searches/geos")
+async def get_search_geos():
+    """Sorted city labels for the frontend's city dropdowns."""
+    return sorted(config.LINKEDIN_GEO_IDS.keys())
+
+
+@app.get("/api/searches")
+async def get_searches():
+    return [s.model_dump() for s in db.get_all_searches()]
+
+
+@app.post("/api/searches")
+async def create_search(body: dict):
+    geo_label = body.get("geo_label", "")
+    geo_id = config.LINKEDIN_GEO_IDS.get(geo_label)
+    if geo_id is None:
+        raise HTTPException(status_code=400, detail=f"Unknown geo_label: {geo_label}")
+
+    try:
+        search = SavedSearch(
+            name=body.get("name", ""),
+            titles=body.get("titles", []),
+            geo_id=geo_id,
+            geo_label=geo_label,
+            remote_only=body.get("remote_only", False),
+            easy_apply_only=body.get("easy_apply_only", True),
+            max_results=body.get("max_results", 25),
+            enabled=body.get("enabled", True),
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    new_id = db.insert_search(
+        name=search.name, titles=search.titles, geo_id=search.geo_id,
+        geo_label=search.geo_label, remote_only=search.remote_only,
+        easy_apply_only=search.easy_apply_only, max_results=search.max_results,
+        enabled=search.enabled,
+    )
+    return db.get_search_by_id(new_id).model_dump()
+
+
+@app.get("/api/searches/{search_id}")
+async def get_search(search_id: int):
+    search = db.get_search_by_id(search_id)
+    if not search:
+        raise HTTPException(status_code=404, detail="Search not found")
+    return search.model_dump()
+
+
+@app.put("/api/searches/{search_id}")
+async def update_search_endpoint(search_id: int, body: dict):
+    existing = db.get_search_by_id(search_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Search not found")
+
+    geo_id = existing.geo_id
+    geo_label = existing.geo_label
+    if "geo_label" in body:
+        geo_label = body["geo_label"]
+        looked_up = config.LINKEDIN_GEO_IDS.get(geo_label)
+        if looked_up is None:
+            raise HTTPException(status_code=400, detail=f"Unknown geo_label: {geo_label}")
+        geo_id = looked_up
+
+    merged = {
+        "name": body.get("name", existing.name),
+        "titles": body.get("titles", existing.titles),
+        "geo_id": geo_id,
+        "geo_label": geo_label,
+        "remote_only": body.get("remote_only", existing.remote_only),
+        "easy_apply_only": body.get("easy_apply_only", existing.easy_apply_only),
+        "max_results": body.get("max_results", existing.max_results),
+        "enabled": body.get("enabled", existing.enabled),
+    }
+    try:
+        SavedSearch(id=search_id, **merged)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    db.update_search(search_id, **merged)
+    return db.get_search_by_id(search_id).model_dump()
+
+
+@app.delete("/api/searches/{search_id}")
+async def delete_search_endpoint(search_id: int):
+    existing = db.get_search_by_id(search_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Search not found")
+    db.delete_search(search_id)
+    return {"deleted": True}
+
+
+@app.post("/api/searches/{search_id}/toggle")
+async def toggle_search_endpoint(search_id: int):
+    existing = db.get_search_by_id(search_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Search not found")
+    new_value = db.toggle_search(search_id)
+    return {"enabled": new_value}
+
+
+@app.post("/api/searches/{search_id}/run")
+async def run_search_endpoint(search_id: int, background_tasks: BackgroundTasks):
+    """Runs just this one search as a background task, using its own
+    max_results directly — no global budget, since this is user-initiated."""
+    search = db.get_search_by_id(search_id)
+    if not search:
+        raise HTTPException(status_code=404, detail="Search not found")
+    background_tasks.add_task(_run_search_background, search)
+    return {"status": "started"}
+
+
 # ── Background tasks ──────────────────────────────────────────────────────────
 
 async def _tailor_background(job_id: int) -> None:
@@ -418,6 +645,31 @@ async def _pipeline_background() -> None:
         log.error(f"Pipeline failed: {exc}")
     finally:
         _pipeline_status["running"] = False
+
+
+async def _discover_background(search: SavedSearch) -> None:
+    """Runs an ad-hoc (unsaved) search. Results land in `jobs` normally."""
+    import logging
+    log = logging.getLogger("dashboard.discover")
+    try:
+        from scraper import LinkedInScraper
+        scraper = LinkedInScraper()
+        new_jobs = await scraper.scrape(search=search)
+        log.info(f"Discover complete — {len(new_jobs)} new jobs")
+    except Exception as exc:
+        log.error(f"Discover failed: {exc}", exc_info=True)
+
+
+async def _run_search_background(search: SavedSearch) -> None:
+    import logging
+    log = logging.getLogger("dashboard.search_run")
+    try:
+        from scraper import LinkedInScraper
+        scraper = LinkedInScraper()
+        new_jobs = await scraper.scrape(search=search)
+        log.info(f"Search '{search.name}' complete — {len(new_jobs)} new jobs")
+    except Exception as exc:
+        log.error(f"Search '{search.name}' failed: {exc}", exc_info=True)
 
 
 # ── Resume API ────────────────────────────────────────────────────────────────
@@ -503,6 +755,13 @@ async def preview_resume():
 @app.get("/resume", response_class=HTMLResponse)
 async def resume_editor(request: Request):
     return templates.TemplateResponse("resume.html", {"request": request})
+
+
+@app.get("/searches", response_class=HTMLResponse)
+async def searches_page(request: Request):
+    return templates.TemplateResponse(
+        "searches.html", {"request": request, "config": config}
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
