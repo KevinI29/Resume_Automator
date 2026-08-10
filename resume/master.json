@@ -16,8 +16,12 @@
       "end": "Present",
       "location": "Bangalore, Karnataka, India",
       "bullets": [
-        "Building foundational knowledge in data pipeline architecture, ETL workflows, and cloud-native tooling (AWS/GCP) applicable to enterprise-scale systems",
-        "Independently initiated full-stack and data science side projects to apply learnings outside formal training, demonstrating a self-driven engineering mindset"
+        "Developed AWS Glue ETL pipelines using PySpark to migrate over 100,000 insurance claims from legacy mainframe extract files (TXT) into an Oracle-based target database.",
+        "Built transformation logic for a base dataset and 25 worker datasets, implementing data cleansing, validation, and business rule transformations before loading into target tables.",
+        "Developed and maintained modular Glue jobs, enabling scalable processing across multiple worker tables.",
+        "Configured deployment artifacts using YAML and HQL YAML definitions to support automated CI/CD deployments.",
+        "Integrated Glue jobs into Apache Airflow (AWS MWAA) DAGs for dependency management and sequential workflow orchestration.",
+        "Collaborated with teammates to validate migrated data and ensure consistency between source mainframe records and Oracle target tables."
       ]
     }
   ],
@@ -64,7 +68,10 @@
       "Jupyter Notebook",
       "MySQL",
       "SQLite",
-      "CI/CD"
+      "CI/CD",
+      "AWS",
+      "DBT cloud",
+      "Airflow"
     ],
     "other": [
       "REST APIs",
@@ -74,7 +81,8 @@
       "Anomaly Detection",
       "Statistical Analysis",
       "Machine Learning",
-      "Data Visualization"
+      "Data Visualization",
+      "CI/CD"
     ]
   },
   "projects": [
