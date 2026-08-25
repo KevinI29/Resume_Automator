@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- autoescape=True enabled in renderer.py (M10 fix, Session 1).
+     All {{ expressions }} in this template output plain text and are correctly escaped.
+     If you add a field that outputs HTML markup, mark it {{ expr | safe }} explicitly. -->
 <meta charset="UTF-8">
 <style>
   :root {

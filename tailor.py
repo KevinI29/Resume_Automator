@@ -12,7 +12,7 @@ from utils import setup_logger
 
 
 class ResumeTailor:
-    MODEL = "claude-haiku-4-5"
+    MODEL = config.TAILOR_MODEL
     MAX_TOKENS = 4000
 
     def __init__(self) -> None:

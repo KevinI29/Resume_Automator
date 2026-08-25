@@ -9,7 +9,7 @@ LINKEDIN_COOKIE: str = os.environ["LINKEDIN_COOKIE"]
 LINKEDIN_CSRF_TOKEN: str = os.environ["LINKEDIN_CSRF_TOKEN"]
 
 # Job search preferences
-TARGET_TITLES: list[str] = ["Software Engineer", "Backend Engineer", "Data Analytics" ]
+TARGET_TITLES: list[str] = ["Software Engineer", "Backend Engineer", "Data Engineer", "Full Stack Engineer", "Software Developer" ]
 TARGET_LOCATION: str = ""       # human-readable label (used in logs only)
 LINKEDIN_GEO_ID: str = "105214831"  # LinkedIn geoId — 102713980=India, 105214831=Bangalore
 
@@ -73,3 +73,27 @@ QA_AI_CONFIDENCE_THRESHOLD: float = 0.75
 QA_FUZZY_MATCH_THRESHOLD: float = 0.85
 # difflib.SequenceMatcher ratio required to trust a qa_bank fuzzy match.
 # Higher = fewer false matches but more tier-4 AI calls.
+
+# --- Remediation Session 1 additions ---
+
+# Tailoring model (Decision 5 — Tailoring model selection)
+# Haiku: fast and cheap, used in sessions 1-10 reality. claude-haiku-4-5
+# Sonnet: quality calls as per original design spec. claude-sonnet-5 (latest, most capable)
+# Change this value to switch without touching tailor.py.
+TAILOR_MODEL: str = "claude-sonnet-5"
+
+# Location — there are FOUR distinct location concepts in this codebase.
+# Do not conflate them:
+#   1. LINKEDIN_GEO_ID / LINKEDIN_GEO_IDS (above) — real geoIds the scraper's
+#      voyager API uses to filter search results by city.
+#   2. TARGET_LOCATION (above) — empty by default; only a log-line label for
+#      the config-fallback scrape path (scraper.py). Not used functionally.
+#   3. JOB_SEARCH_LOCATION (below) — the plain-text city name typed into the
+#      Easy Apply modal's "current location" autocomplete field when it's
+#      blank (applicant.py:532). A UI form value, unrelated to search geoIds.
+#   4. master.json personal.location — the candidate's residential address as
+#      printed on the resume. Never substitute for #1-#3.
+# Session 2 will use JOB_SEARCH_LOCATION in applicant.py to replace the
+# hardcoded "Bengaluru" at applicant.py:532. This default preserves that
+# same hardcoded value — no behavior change in Session 1, just configurability.
+JOB_SEARCH_LOCATION: str = "Bengaluru"

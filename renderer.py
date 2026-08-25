@@ -14,7 +14,7 @@ class ResumeRenderer:
         with open(config.RESUME_TEMPLATE_PATH, encoding="utf-8") as f:
             template_src = f.read()
         self.template = jinja2.Environment(
-            autoescape=False,
+            autoescape=True,   # M10 fix: escape < > & in all template expressions
             undefined=jinja2.Undefined,
         ).from_string(template_src)
         os.makedirs(config.OUTPUT_RESUME_DIR, exist_ok=True)

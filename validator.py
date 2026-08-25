@@ -10,6 +10,7 @@ Usage:
 """
 import asyncio
 import random
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -233,7 +234,18 @@ class JobValidator:
 
             if await self._is_logged_out(page):
                 self.logger.warning("Not logged in — please log in in the browser window")
-                input("Press Enter after logging in...")
+                # H3 fix: input() raises EOFError with no stdin TTY (subprocess
+                # context) — guard it and fail loudly instead.
+                if sys.stdin.isatty():
+                    input("Press Enter after logging in...")
+                else:
+                    self.logger.error(
+                        "LinkedIn session not logged in and running in subprocess context. "
+                        "Run directly from a terminal: python validator.py --single <job_id>"
+                    )
+                    raise RuntimeError(
+                        "Not logged in and no TTY available — cannot pause for manual login"
+                    )
                 await page.goto(job.url, wait_until="domcontentloaded", timeout=30_000)
                 await asyncio.sleep(random.uniform(2.0, 3.5))
                 if await self._is_logged_out(page):
@@ -376,7 +388,8 @@ def get_jobs_to_validate(min_score: int | None = None) -> list:
 # ---------------------------------------------------------------------------
 
 async def _main() -> None:
-    import sys
+    # `sys` is imported at module level now (needed by check_job()'s
+    # stdin/TTY check) — no longer imported locally here.
     from rich.console import Console
     from rich.table import Table
     from rich import box

@@ -9,10 +9,13 @@ Usage:
 """
 import asyncio
 import random
+import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
 from playwright.async_api import BrowserContext, Page, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from rich.console import Console
 
 import config
@@ -151,6 +154,47 @@ class LinkedInApplicant:
                 return True
         return False
 
+    async def _page_confirms_closed(self, page: Page, page_lower: str | None = None) -> bool:
+        """
+        H2 fix (Remediation Session 2): the single canonical answer to "is this
+        job confirmed closed by LinkedIn itself". Returns True ONLY when page
+        content (or a redirect to the generic jobs page) explicitly confirms
+        the job is gone. Never call this on a page that failed to load — only
+        after a successful page.goto().
+
+        Pass a pre-lowercased page_lower to skip the internal inner_text()
+        fetch (navigate_to_job() already has one computed); omit it to have
+        this method fetch its own — used when calling with just a bare page.
+
+        Phrase list is the union of what applicant.py's own inline checks and
+        validator.py's independently-calibrated _detect_page_state() already
+        use in production — kept broad deliberately; narrowing either set
+        risks missing a real closed-job signal.
+        """
+        try:
+            if page_lower is None:
+                page_lower = (await page.inner_text("body")).lower()
+
+            closed_phrases = (
+                "unable to load the page",
+                "job posting has been removed",
+                "not be valid",
+                "no longer accepting",
+                "no longer available",
+            )
+            if any(phrase in page_lower for phrase in closed_phrases):
+                return True
+
+            # Redirect to the generic jobs/search page = job gone.
+            if page.url.rstrip("/") in (
+                "https://www.linkedin.com/jobs",
+                "https://www.linkedin.com/jobs/search",
+            ):
+                return True
+        except Exception:
+            pass
+        return False
+
     async def _take_screenshot(self, page: Page, name: str) -> None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = f"logs/screenshots/{name}_{ts}.png"
@@ -181,8 +225,15 @@ class LinkedInApplicant:
 
     # ── Navigation ─────────────────────────────────────────────────────────────
 
-    async def navigate_to_job(self, page: Page, url: str) -> str | None:
-        """Navigate to the job URL. Returns 'open', 'closed', 'applied', or None on error."""
+    async def navigate_to_job(self, page: Page, url: str) -> str:
+        """Navigate to the job URL. Returns 'open', 'closed', 'applied', or 'failed'.
+
+        H2 fix (Remediation Session 2): every error path returns 'failed', never
+        None — a navigation/network error is not the same claim as LinkedIn
+        confirming the job is gone (see _page_confirms_closed()), and the two
+        must never be conflated (a 'closed' status makes the job eligible for
+        PDF-deleting purge; 'failed' is recoverable and retried).
+        """
         try:
             await page.goto(url, wait_until="load", timeout=30000)
             await self._human_delay(4.0, 6.0)
@@ -190,7 +241,20 @@ class LinkedInApplicant:
             # Check if we need to log in
             if await page.query_selector('input[name="session_key"]'):
                 self.logger.warning("Not logged in — please log in in the browser window")
-                input("Press Enter after logging in...")
+                # H3 fix: input() raises EOFError with no stdin TTY (subprocess
+                # context) — guard it and fail loudly instead.
+                if sys.stdin.isatty():
+                    input("Press Enter after logging in...")
+                else:
+                    self.logger.error(
+                        "LinkedIn session not logged in and running in subprocess context "
+                        "(stdin is not a TTY). Manual login is not possible here. "
+                        "Run directly from a terminal to log in first: "
+                        "python applicant.py --single <job_id>"
+                    )
+                    raise RuntimeError(
+                        "Not logged in and no TTY available — cannot pause for manual login"
+                    )
                 await page.goto(url, wait_until="load", timeout=30000)
                 await self._human_delay(4.0, 6.0)
 
@@ -200,21 +264,13 @@ class LinkedInApplicant:
 
             page_lower = (await page.inner_text("body")).lower()
 
-            # State 1: Job removed / invalid link
-            if ("unable to load the page" in page_lower
-                    or "job posting has been removed" in page_lower
-                    or "not be valid" in page_lower):
-                self.logger.info(f"Job removed/invalid: {url}")
-                return "closed"
-
-            # State 2: Already applied — check BEFORE expired (page can show both)
+            # Already applied — check BEFORE closed (page can show both)
             if "application submitted" in page_lower:
                 self.logger.info(f"Already applied to this job: {url}")
                 return "applied"
 
-            # State 3: No longer accepting
-            if "no longer accepting" in page_lower or "no longer available" in page_lower:
-                self.logger.info(f"Job closed: {url}")
+            if await self._page_confirms_closed(page, page_lower):
+                self.logger.info(f"Job confirmed closed by page content: {url}")
                 return "closed"
 
             await self._scroll_job_page(page)
@@ -222,9 +278,12 @@ class LinkedInApplicant:
 
         except RuntimeError:
             raise
+        except PlaywrightTimeoutError as exc:
+            self.logger.warning(f"Navigation timeout for {url}: {exc} — network issue, not closed")
+            return "failed"
         except Exception as exc:
             self.logger.error(f"Navigation failed: {exc}")
-            return None
+            return "failed"
 
     # ── Easy Apply modal ───────────────────────────────────────────────────────
 
@@ -405,8 +464,19 @@ class LinkedInApplicant:
         await self._take_screenshot(page, "no_easyapply")
         return False
 
-    async def upload_resume(self, page: Page, pdf_path: str) -> bool:
-        """Upload the tailored PDF resume inside the Easy Apply modal."""
+    async def upload_resume(self, page: Page, pdf_path: str) -> bool | None:
+        """
+        Upload the tailored PDF resume inside the Easy Apply modal, if a file
+        input is present on the current step.
+
+        H1 fix (Remediation Session 2) — tristate contract:
+          True  — file input found AND upload confirmed
+          False — file input found BUT upload could not be confirmed (genuine failure)
+          None  — no file input on this step (nothing to do here — not an error)
+        Callers must fail the job on False, continue normally on None, and
+        continue to Submit/Next on True. The old behavior returned True on a
+        miss, which made the caller falsely believe the upload had succeeded.
+        """
         try:
             await self._human_delay(1.0, 2.0)
             file_input = await page.query_selector('input[type="file"]')
@@ -419,14 +489,46 @@ class LinkedInApplicant:
                 """)
                 file_input = await page.query_selector('input[type="file"]')
 
-            if file_input:
-                await file_input.set_input_files(pdf_path)
-                self.logger.info(f"Resume uploaded: {pdf_path}")
-                await self._human_delay(2.0, 3.0)
+            if not file_input:
+                self.logger.info("No file input on this step — skipping resume upload")
+                return None
+
+            await file_input.set_input_files(pdf_path)
+            await self._human_delay(2.0, 3.0)
+
+            # Confirm the upload actually took. VERIFIED against a live
+            # single-job test (job 567, screenshot
+            # upload_fail_step2_20260823_174003.png): LinkedIn's real Resume
+            # step is a resume PICKER, not a blank upload target — once any
+            # resume has ever been uploaded, it shows a library of resume
+            # cards and re-renders that section after a successful upload.
+            # That re-render can leave the original <input type="file">
+            # element's own value empty/stale even though the upload
+            # genuinely succeeded — checking input_value() alone produced a
+            # false negative there (job 567 failed with a confirmed-good
+            # upload sitting selected in the modal). The uploaded filename
+            # appearing as visible text in the modal (every resume card shows
+            # its filename) is the reliable signal for that flow.
+            # input_value() is kept as a fallback second signal for a
+            # simpler first-ever-upload variant that may not use the picker
+            # UI (still unverified — no live test has hit that path yet).
+            filename = Path(pdf_path).name
+            try:
+                modal_text = await page.inner_text(self.MODAL_CONTENT_SELECTOR)
+            except Exception:
+                modal_text = ""
+
+            if filename in modal_text:
+                self.logger.info(f"Resume upload confirmed (filename visible in modal): {pdf_path}")
                 return True
-            else:
-                self.logger.warning("No file input found — skipping resume upload")
-                return True  # Don't fail — LinkedIn may use previously uploaded resume
+
+            input_value = await file_input.input_value()
+            if input_value.strip():
+                self.logger.info(f"Resume upload confirmed (input value set): {pdf_path}")
+                return True
+
+            self.logger.warning(f"Resume uploaded but not confirmed by either signal: {pdf_path}")
+            return False
         except Exception as exc:
             self.logger.error(f"Resume upload failed: {exc}")
             return False
@@ -529,7 +631,7 @@ class LinkedInApplicant:
                 await location_field.scroll_into_view_if_needed()
                 await location_field.click(click_count=3)
                 await location_field.press("Backspace")
-                await self._human_type(location_field, "Bengaluru")
+                await self._human_type(location_field, config.JOB_SEARCH_LOCATION)
                 await self._human_delay(2.0, 3.0)
                 try:
                     await page.wait_for_selector(
@@ -672,7 +774,38 @@ class LinkedInApplicant:
         except Exception as exc:
             self.logger.warning(f"Fieldset radio handling warning: {exc}")
 
-    async def handle_form_steps(self, page: Page) -> str:
+    async def _get_current_step(self, page: Page) -> int | None:
+        """
+        Returns the current step number from the Easy Apply modal's step
+        indicator ("Step X of Y"), or None if no indicator is found/parseable.
+
+        UNVERIFIED against a live LinkedIn modal — the selectors below are
+        best-effort guesses (Remediation Session 2 had no live session to
+        confirm them against). Safe to ship regardless: every caller falls
+        back to the pre-existing text-diff detection whenever this returns
+        None, so a wrong/no-match selector just means the old behavior
+        applies — never a new failure mode. Flagged for the live single-job
+        test to confirm or correct.
+        """
+        try:
+            selectors = [
+                'h3.t-16',                              # "Step 1 of 3"
+                '[aria-label*="Step"]',                  # aria-label="Step 2 of 3"
+                '.artdeco-modal__header h2',
+                'span:has-text("Step")',
+            ]
+            for sel in selectors:
+                el = await page.query_selector(sel)
+                if el:
+                    text = await el.inner_text()
+                    match = re.search(r'Step\s+(\d+)\s+of\s+\d+', text, re.IGNORECASE)
+                    if match:
+                        return int(match.group(1))
+        except Exception:
+            pass
+        return None
+
+    async def handle_form_steps(self, page: Page, pdf_path: str | None = None) -> str:
         """
         State machine for the multi-step Easy Apply form.
         Loops through Next → Review → Submit, max 8 steps.
@@ -681,6 +814,11 @@ class LinkedInApplicant:
         fill_form_fields() queued one or more required fields it couldn't
         resolve (see self._pending_fields); the caller parks the job as
         pending_questions instead of retrying to MAX_STEPS.
+
+        H1 fix (Remediation Session 2): attempts resume upload on every step
+        (not just the first, via a standalone pre-loop call as before) — the
+        file input may not appear until step 2+. No-ops when pdf_path is
+        falsy/"failed", matching the old guard that lived in apply_to_job().
         """
         max_steps = 8
         step = 0
@@ -692,6 +830,17 @@ class LinkedInApplicant:
             if await self._check_captcha(page):
                 await self._take_screenshot(page, "captcha_in_form")
                 raise RuntimeError("CAPTCHA detected during form — stopping")
+
+            # Attempt resume upload on every step (H1 fix). upload_resume()
+            # returns True (uploaded+confirmed), None (no file input on this
+            # step — fine), or False (file input present but upload could
+            # not be confirmed — a genuine failure).
+            if pdf_path and pdf_path != "failed":
+                upload_result = await self.upload_resume(page, pdf_path)
+                if upload_result is False:
+                    self.logger.error(f"Resume upload failed on step {step + 1}")
+                    await self._take_screenshot(page, f"upload_fail_step{step + 1}")
+                    return "failed"
 
             # Fill fields on the current page
             await self.fill_form_fields(page)
@@ -716,43 +865,69 @@ class LinkedInApplicant:
                 'button:has-text("Review")'
             )
             if review_btn:
-                if review_retries > 2:
-                    self.logger.warning(
-                        "Required fields could not be filled — proceeding anyway"
+                if review_retries >= 2:
+                    # Task 8 (LOW fix): the Review step is a hard boundary —
+                    # only Submit exists here, never Next. The old code fell
+                    # through to look for Next, which could never succeed;
+                    # fail directly instead of that misleading detour.
+                    self.logger.error(
+                        f"Review did not advance the form after {review_retries} attempts "
+                        f"(step {step + 1}). Not looking for Next — it cannot exist on a "
+                        f"Review step. Treating as a genuine failure."
                     )
-                    # Fall through to Next button check below
+                    await self._take_screenshot(page, f"review_fail_step{step}")
+                    return "failed"
+
+                # §2a fix: step-indicator is the primary advance signal —
+                # immune to inline validation-error text changes that used to
+                # cause a false "advanced" read from the text diff alone.
+                step_before = await self._get_current_step(page)
+                try:
+                    current_content = await page.inner_text(
+                        self.MODAL_CONTENT_SELECTOR
+                    )
+                except Exception:
+                    current_content = ""
+
+                self.logger.info(f"Clicking Review button (attempt {review_retries + 1})")
+                await self._human_click(review_btn)
+                await self._human_delay(2.0, 3.0)
+
+                if step_before is not None:
+                    step_after = None
+                    for _ in range(6):
+                        step_after = await self._get_current_step(page)
+                        if step_after != step_before:
+                            break
+                        await asyncio.sleep(0.5)
+                    advanced = step_after is not None and step_after != step_before
+                    if advanced:
+                        self.logger.info(f"Form advanced: step {step_before} → {step_after}")
                 else:
-                    try:
-                        current_content = await page.inner_text(
-                            self.MODAL_CONTENT_SELECTOR
-                        )
-                    except Exception:
-                        current_content = ""
-
-                    self.logger.info(f"Clicking Review button (attempt {review_retries + 1})")
-                    await self._human_click(review_btn)
-                    await self._human_delay(2.0, 3.0)
-
+                    # Step indicator not found — fall back to the pre-existing
+                    # text-diff detection (unchanged behavior for modals where
+                    # the step number isn't parseable).
                     try:
                         new_content = await page.inner_text(
                             self.MODAL_CONTENT_SELECTOR
                         )
                     except Exception:
                         new_content = ""
+                    advanced = not (new_content and new_content == current_content)
 
-                    if new_content and new_content == current_content:
-                        review_retries += 1
-                        self.logger.warning(
-                            f"Review did not advance form (attempt {review_retries})"
-                        )
-                        await self.fill_form_fields(page)
-                        if self._pending_fields:
-                            return "pending"
-                        continue
-                    else:
-                        review_retries = 0
-                        step += 1
-                        continue
+                if not advanced:
+                    review_retries += 1
+                    self.logger.warning(
+                        f"Review did not advance form (attempt {review_retries})"
+                    )
+                    await self.fill_form_fields(page)
+                    if self._pending_fields:
+                        return "pending"
+                    continue
+                else:
+                    review_retries = 0
+                    step += 1
+                    continue
 
             # Next button
             next_btn = await page.query_selector(
@@ -780,7 +955,11 @@ class LinkedInApplicant:
                             return "pending"
                         await self._human_delay(1.0, 2.0)
 
-                # Capture content before clicking to detect if we advanced
+                # Capture step/content before clicking to detect if we advanced.
+                # §2a fix: step-indicator is primary (immune to inline
+                # validation-error text changes); text-diff is the fallback
+                # when no indicator is found.
+                step_before = await self._get_current_step(page)
                 try:
                     current_content = await page.inner_text(
                         self.MODAL_CONTENT_SELECTOR
@@ -792,15 +971,30 @@ class LinkedInApplicant:
                 await self._human_click(next_btn)
                 await self._human_delay(2.0, 3.0)
 
-                try:
-                    new_content = await page.inner_text(
-                        self.MODAL_CONTENT_SELECTOR
-                    )
-                except Exception:
-                    new_content = ""
+                step_after = None
+                if step_before is not None:
+                    for _ in range(6):
+                        step_after = await self._get_current_step(page)
+                        if step_after != step_before:
+                            break
+                        await asyncio.sleep(0.5)
+                    advanced = step_after is not None and step_after != step_before
+                    if advanced:
+                        self.logger.info(f"Form advanced: step {step_before} → {step_after}")
+                else:
+                    try:
+                        new_content = await page.inner_text(
+                            self.MODAL_CONTENT_SELECTOR
+                        )
+                    except Exception:
+                        new_content = ""
+                    advanced = not (new_content and new_content == current_content)
 
-                if new_content and new_content == current_content:
-                    self.logger.warning("Form did not advance — likely a validation error")
+                if not advanced:
+                    self.logger.warning(
+                        f"Form did not advance after clicking Next "
+                        f"(step {step_before} → {step_after}) — likely a validation error"
+                    )
                     await self._take_screenshot(page, f"stuck_form_step{step}")
                     return "failed"
 
@@ -835,7 +1029,13 @@ class LinkedInApplicant:
 
             nav_result = await self.navigate_to_job(page, job.url)
             if nav_result != "open":
-                db.update_job_status(job.id, nav_result or "closed")
+                # H2 fix: navigate_to_job() now always returns a real string
+                # ("open"/"closed"/"applied"/"failed") — never None — so the
+                # old status-write, which silently defaulted to closed
+                # whenever navigation returned nothing, is gone. A "failed"
+                # write here is recoverable; "closed" is not (it makes the
+                # job eligible for PDF-deleting purge).
+                db.update_job_status(job.id, nav_result)
                 if nav_result == "closed":
                     return "closed"
                 if nav_result == "applied":
@@ -859,18 +1059,28 @@ class LinkedInApplicant:
 
             easy_apply_result = await self.click_easy_apply(page)
             if easy_apply_result == "external":
+                # H5 fix: external-apply is an intentional skip, not a
+                # failure — it must not trip the consecutive-failure circuit
+                # breaker. Status is still "manual" so the dashboard shows it
+                # correctly; is_easy_apply is corrected to False since we just
+                # observed ground truth live.
                 db.update_job_status(job.id, "manual")
-                self.logger.info(f"Marked as manual apply: {job.title} @ {job.company}")
-                return "failed"
+                db.update_job_field(job.id, "is_easy_apply", False)
+                self.logger.info(
+                    f"Job {job.id} is external-apply only — cannot auto-submit. "
+                    f"Marked manual: {job.title} @ {job.company}"
+                )
+                return "skipped"
             elif not easy_apply_result:
                 await self._take_screenshot(page, f"no_easyapply_{job.id}")
                 return "failed"
 
-            # Upload resume if available
-            if job.resume_path and job.resume_path != "failed":
-                await self.upload_resume(page, job.resume_path)
-
-            step_outcome = await self.handle_form_steps(page)
+            # H1 fix: resume upload is no longer a single pre-loop attempt —
+            # handle_form_steps() now retries it on every step, since the
+            # file input may not appear until step 2+. The resume_path guard
+            # (skip entirely if there's no valid resume) moved into the
+            # pdf_path argument itself.
+            step_outcome = await self.handle_form_steps(page, job.resume_path)
 
             if step_outcome == "pending":
                 self.logger.warning(
@@ -907,7 +1117,7 @@ class LinkedInApplicant:
 
     async def apply_batch(self, jobs: list[Job]) -> dict:
         """Apply to a list of jobs sequentially with human-like gaps between them."""
-        results = {"applied": 0, "pending_questions": 0, "failed": 0, "skipped": 0}
+        results = {"applied": 0, "pending_questions": 0, "failed": 0, "skipped": 0, "closed": 0}
         consecutive_failures = 0
 
         for i, job in enumerate(jobs):
@@ -964,7 +1174,8 @@ class LinkedInApplicant:
 # ── CLI entry point ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
+    # `sys` is imported at module level now (needed by navigate_to_job()'s
+    # stdin/TTY check) — no longer imported locally here.
 
     async def main() -> None:
         # QAResolver (constructed in LinkedInApplicant.__init__) reads the
@@ -1004,6 +1215,7 @@ if __name__ == "__main__":
             console.print(f"[yellow]Pending questions: {results['pending_questions']}[/yellow]")
             console.print(f"[red]Failed: {results['failed']}[/red]")
             console.print(f"[dim]Skipped: {results['skipped']}[/dim]")
+            console.print(f"[dim]Closed (job no longer open): {results.get('closed', 0)}[/dim]")
 
         await applicant.close()
 
